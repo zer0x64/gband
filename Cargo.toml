@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "./gband"
+]
+
+[profile.dev]
+# Slightly better optimizations.
+opt-level = 1
+
+[profile.release]
+codegen-units = 1
