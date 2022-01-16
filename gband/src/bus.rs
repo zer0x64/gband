@@ -1,14 +1,10 @@
-use crate::WRAM_BANK_SIZE;
 use crate::Cartridge;
 use crate::Ppu;
+use crate::WRAM_BANK_SIZE;
 
 macro_rules! borrow_cpu_bus {
     ($owner:ident) => {{
-        $crate::bus::CpuBus::borrow(
-            &mut $owner.wram,
-            &mut $owner.cartridge,
-            &mut $owner.ppu,
-        )
+        $crate::bus::CpuBus::borrow(&mut $owner.wram, &mut $owner.cartridge, &mut $owner.ppu)
     }};
 }
 

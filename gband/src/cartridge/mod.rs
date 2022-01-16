@@ -22,6 +22,8 @@ pub struct Cartridge {
 impl Cartridge {
     pub fn load(_rom: &[u8], _save_data: Option<&[u8]>) -> Result<Self, RomParserError> {
         // TODO
-        Ok(Self { execution_mode: ExecutionMode::GB })
+        Ok(Self {
+            execution_mode: ExecutionMode::GB,
+        })
     }
 }

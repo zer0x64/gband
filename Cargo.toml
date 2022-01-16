@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "./gband"
+    "./gband",
+    "./gband-wgpu",
 ]
 
 [profile.dev]
