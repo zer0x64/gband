@@ -16,7 +16,7 @@ pub mod utils;
 pub use cartridge::RomParserError;
 pub use controller_state::ControllerState;
 pub use cpu::Cpu;
-pub use ppu::{ Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH };
+pub use ppu::{Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH};
 
 use cartridge::Cartridge;
 use enums::ExecutionMode;
