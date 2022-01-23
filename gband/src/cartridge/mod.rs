@@ -8,6 +8,7 @@ use mappers::*;
 pub use header::RomParserError;
 
 pub enum CartridgeReadTarget {
+    Error,
     Rom(usize),
     Ram(usize),
 }
@@ -55,9 +56,17 @@ impl Cartridge {
             _ => {}
         };
 
-        let mapper = match header.cartridge_type {
+        let ram_banks = match header.ram_banks {
+            RamBanks::Banks(x) => x,
+            _ => 0,
+        };
+
+        let mapper: Box<dyn Mapper> = match header.cartridge_type {
             CartridgeType::RomOnly | CartridgeType::RomRam | CartridgeType::RomRamBattery => {
                 Box::new(NoMapper)
+            }
+            CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery => {
+                Box::new(Mbc1::new(header.rom_banks, ram_banks))
             }
             _ => return Err(RomParserError::MapperNotImplemented),
         };
@@ -72,6 +81,7 @@ impl Cartridge {
 
     pub fn read(&self, addr: u16) -> u8 {
         match self.mapper.map_read(addr) {
+            CartridgeReadTarget::Error => 0,
             CartridgeReadTarget::Rom(addr) => self.rom[addr % self.rom.len()],
             CartridgeReadTarget::Ram(addr) => match &self.ram {
                 Some(ram) => ram[addr % ram.len()],

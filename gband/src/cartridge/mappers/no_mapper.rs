@@ -6,7 +6,7 @@ pub struct NoMapper;
 impl Mapper for NoMapper {
     fn map_read(&self, addr: u16) -> CartridgeReadTarget {
         match addr {
-            0x00..=0x7FFF => {
+            0x0000..=0x7FFF => {
                 // The max size here is 32KiB
                 let mask = 0x7fff;
                 CartridgeReadTarget::Rom((addr & mask) as usize)
@@ -17,16 +17,14 @@ impl Mapper for NoMapper {
             }
             _ => {
                 log::warn!("Read on cartridge at {addr}, which isn't supposed to be mapped to the cartridge");
-
-                let mask = 0x7fff;
-                CartridgeReadTarget::Rom((addr & mask) as usize)
+                CartridgeReadTarget::Error
             }
         }
     }
 
-    fn map_write(&self, addr: u16, _data: u8) -> Option<usize> {
+    fn map_write(&mut self, addr: u16, _data: u8) -> Option<usize> {
         match addr {
-            0x00..=0x7FFF => {
+            0x0000..=0x7FFF => {
                 // Nothing to do
                 None
             }

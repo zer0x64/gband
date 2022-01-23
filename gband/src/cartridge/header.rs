@@ -2,7 +2,6 @@ use num_enum::TryFromPrimitive;
 
 #[derive(Debug, Clone, Copy)]
 pub enum RomParserError {
-    // TODO
     TooShort,
     UnknownMapper,
     MapperNotImplemented,
@@ -115,31 +114,7 @@ impl TryFrom<&[u8]> for Header {
             return Err(RomParserError::UnknownMapper);
         };
 
-        let is_mbc1 = match cartridge_type {
-            CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery => true,
-            _ => false,
-        };
-
-        let rom_banks: usize = match data[0x48] {
-            0x05 => {
-                if is_mbc1 {
-                    63
-                } else {
-                    64
-                }
-            }
-            0x06 => {
-                if is_mbc1 {
-                    125
-                } else {
-                    128
-                }
-            }
-            0x52 => 72,
-            0x53 => 80,
-            0x54 => 96,
-            b => 0b10usize.overflowing_shl(b.into()).0,
-        };
+        let rom_banks = 0b10usize.wrapping_shl(data[0x48].into());
 
         let ram_banks = match data[0x49] {
             0 => match cartridge_type {
