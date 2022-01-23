@@ -79,8 +79,7 @@ impl Emulator {
     }
 
     pub fn get_save_data(&self) -> Option<&[u8]> {
-        // TODO
-        None
+        self.cartridge.get_save_data()
     }
 
     #[cfg(feature = "debugger")]
