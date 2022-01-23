@@ -25,6 +25,9 @@ struct Opt {
 
     #[structopt(short = "p", long)]
     start_paused: bool,
+
+    #[structopt(default_value = "info", short, long)]
+    log_level: String,
 }
 
 mod debugger;
@@ -522,6 +525,10 @@ impl State {
 fn main() {
     // Parse CLI options
     let opt = Opt::from_args();
+
+    flexi_logger::Logger::with_str(opt.log_level)
+        .start()
+        .unwrap();
 
     // Create the window
     let event_loop = EventLoop::new();

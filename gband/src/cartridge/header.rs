@@ -15,14 +15,14 @@ impl core::fmt::Display for RomParserError {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum CgbFlag {
     NoCgb,
     CgbSupported,
     CgbOnly,
 }
 
-#[derive(Clone, Copy, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, TryFromPrimitive)]
 #[repr(u8)]
 pub enum CartridgeType {
     RomOnly = 0x00,
@@ -55,7 +55,7 @@ pub enum CartridgeType {
     Huc1RamBattery = 0xFF,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum RamBanks {
     None,
     Mbc2,
@@ -63,7 +63,7 @@ pub enum RamBanks {
     Banks(usize),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Header {
     pub logo: [u8; 0x30],
     pub title: [u8; 11],

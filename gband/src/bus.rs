@@ -39,4 +39,12 @@ impl CpuBus<'_> {
         // TODO: Bank switching
         self.wram[(addr & ((WRAM_BANK_SIZE * 4) - 1)) as usize]
     }
+
+    pub fn write_cartridge(&mut self, addr: u16, data: u8) {
+        self.cartridge.write(addr, data)
+    }
+
+    pub fn read_cartridge(&self, addr: u16) -> u8 {
+        self.cartridge.read(addr)
+    }
 }

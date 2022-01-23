@@ -8,7 +8,6 @@ mod bus;
 mod cartridge;
 mod controller_state;
 mod cpu;
-mod enums;
 mod ppu;
 mod rgb_palette;
 pub mod utils;
@@ -19,7 +18,6 @@ pub use cpu::Cpu;
 pub use ppu::{Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH};
 
 use cartridge::Cartridge;
-use enums::ExecutionMode;
 
 const WRAM_BANK_SIZE: u16 = 0x400;
 
@@ -37,23 +35,20 @@ pub struct Emulator {
     // == IP Related Hardware == //
 
     // == Emulation Specific Data == //
-    execution_mode: ExecutionMode,
     clock_count: u8,
 }
 
 impl Emulator {
     pub fn new(rom: &[u8], save_data: Option<&[u8]>) -> Result<Self, RomParserError> {
         let cartridge = Cartridge::load(rom, save_data)?;
-        let execution_mode = cartridge.execution_mode;
 
-        let mut emulator = Self {
+        let emulator = Self {
             cartridge,
             cpu: Default::default(),
             wram: [0u8; WRAM_BANK_SIZE as usize * 4],
 
             ppu: Default::default(),
 
-            execution_mode,
             clock_count: 0,
         };
 
