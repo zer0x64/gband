@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use gband::{ControllerState, Emulator};
+use gband::{Emulator, JoypadState};
 use wgpu::util::DeviceExt;
 
 use std::{
@@ -33,16 +33,16 @@ struct Opt {
 mod debugger;
 
 // This maps the keyboard input to a controller input
-fn winit_to_gband_input(keycode: &VirtualKeyCode) -> Result<ControllerState, ()> {
+fn winit_to_gband_input(keycode: &VirtualKeyCode) -> Result<JoypadState, ()> {
     match keycode {
-        VirtualKeyCode::X => Ok(ControllerState::A),
-        VirtualKeyCode::Z => Ok(ControllerState::B),
-        VirtualKeyCode::S => Ok(ControllerState::START),
-        VirtualKeyCode::A => Ok(ControllerState::SELECT),
-        VirtualKeyCode::Down => Ok(ControllerState::DOWN),
-        VirtualKeyCode::Left => Ok(ControllerState::LEFT),
-        VirtualKeyCode::Right => Ok(ControllerState::RIGHT),
-        VirtualKeyCode::Up => Ok(ControllerState::UP),
+        VirtualKeyCode::X => Ok(JoypadState::A),
+        VirtualKeyCode::Z => Ok(JoypadState::B),
+        VirtualKeyCode::S => Ok(JoypadState::START),
+        VirtualKeyCode::A => Ok(JoypadState::SELECT),
+        VirtualKeyCode::Down => Ok(JoypadState::DOWN),
+        VirtualKeyCode::Left => Ok(JoypadState::LEFT),
+        VirtualKeyCode::Right => Ok(JoypadState::RIGHT),
+        VirtualKeyCode::Up => Ok(JoypadState::UP),
         _ => Err(()),
     }
 }
@@ -84,7 +84,7 @@ impl Vertex {
 
 struct State {
     emulator: Emulator,
-    controller: ControllerState,
+    controller: JoypadState,
     last_frame_time: Instant,
 
     paused: bool,
@@ -362,7 +362,7 @@ impl State {
                     if let Ok(f) = winit_to_gband_input(key_code) {
                         self.controller.insert(f);
 
-                        self.emulator.set_controller(self.controller);
+                        self.emulator.set_joypad(self.controller);
                         true
                     } else {
                         false
@@ -377,7 +377,7 @@ impl State {
                     if let Ok(f) = winit_to_gband_input(key_code) {
                         self.controller.remove(f);
 
-                        self.emulator.set_controller(self.controller);
+                        self.emulator.set_joypad(self.controller);
                         true
                     } else {
                         false

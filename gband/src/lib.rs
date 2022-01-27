@@ -6,14 +6,14 @@ extern crate alloc;
 mod bus;
 
 mod cartridge;
-mod controller_state;
+mod joypad_state;
 mod cpu;
 mod ppu;
 mod rgb_palette;
 pub mod utils;
 
 pub use cartridge::RomParserError;
-pub use controller_state::ControllerState;
+pub use joypad_state::JoypadState;
 pub use cpu::Cpu;
 pub use ppu::{Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH};
 
@@ -34,6 +34,10 @@ pub struct Emulator {
 
     // == IP Related Hardware == //
 
+    // == IO Hardware ==
+    joypad_state: JoypadState,
+    joypad_register: u8,
+
     // == Emulation Specific Data == //
     clock_count: u8,
 }
@@ -48,6 +52,9 @@ impl Emulator {
             wram: [0u8; WRAM_BANK_SIZE as usize * 4],
 
             ppu: Default::default(),
+
+            joypad_state: Default::default(),
+            joypad_register: Default::default(),
 
             clock_count: 0,
         };
@@ -74,8 +81,8 @@ impl Emulator {
         self.ppu.ready_frame()
     }
 
-    pub fn set_controller(&mut self, _state: ControllerState) {
-        // TODO
+    pub fn set_joypad(&mut self, state: JoypadState) {
+        self.joypad_state = state
     }
 
     pub fn get_save_data(&self) -> Option<&[u8]> {
