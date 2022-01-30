@@ -3,7 +3,7 @@
 extern crate alloc;
 
 #[macro_use]
-mod bus;
+pub mod bus; // TODO: Revert pub added for criterion
 
 mod cartridge;
 mod joypad_state;
@@ -17,9 +17,10 @@ pub use joypad_state::JoypadState;
 pub use cpu::Cpu;
 pub use ppu::{Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH};
 
-use cartridge::Cartridge;
+// TODO: Revert pub added for criterion
+pub use cartridge::Cartridge;
 
-const WRAM_BANK_SIZE: u16 = 0x400;
+const WRAM_BANK_SIZE: u16 = 0x1000; // 4KiB
 
 pub struct Emulator {
     // == Cartridge Related Hardware== //
@@ -27,7 +28,7 @@ pub struct Emulator {
 
     // == CPU Related Hardware == //
     cpu: Cpu,
-    wram: [u8; WRAM_BANK_SIZE as usize * 4],
+    wram: [u8; WRAM_BANK_SIZE as usize * 8],
 
     // == PPU Related Hardware == //
     ppu: Ppu,
@@ -49,7 +50,7 @@ impl Emulator {
         let emulator = Self {
             cartridge,
             cpu: Default::default(),
-            wram: [0u8; WRAM_BANK_SIZE as usize * 4],
+            wram: [0u8; WRAM_BANK_SIZE as usize * 8],
 
             ppu: Default::default(),
 
@@ -120,7 +121,8 @@ impl Emulator {
 
 #[test]
 fn test() {
-    let rom = [0u8; 10];
+    let mut rom = [0u8; 0x150];
+    rom[0x14d] = 231;
     let mut emu = Emulator::new(&rom, None).unwrap();
 
     for _ in 0..10 {

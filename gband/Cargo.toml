@@ -13,3 +13,10 @@ bitflags = { version = "1.2", default-features = false }
 bitfield = { version = "0.13.2", default-features = false }
 log = { version = "0.4", default-features = false }
 num_enum = { version = "0.5", default-features = false }
+
+[dev-dependencies]
+criterion = "0.3.4"
+
+[[bench]]
+name = "decoder_benchmark"
+harness = false
