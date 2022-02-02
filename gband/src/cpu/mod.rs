@@ -34,15 +34,16 @@ pub struct Cpu {
 impl Default for Cpu {
     fn default() -> Self {
         Self {
+            // Values after CGB Boot ROM
             b: 0,
             c: 0,
-            d: 0,
-            e: 0,
+            d: 0xFF,
+            e: 0x56,
             h: 0,
-            l: 0,
+            l: 0x0D,
             a: 0x11,
-            f: FlagRegister::empty(),
-            sp: 0,
+            f: FlagRegister::Z,
+            sp: 0xFFFE,
             pc: 0x100,
             cycles: 0,
 
