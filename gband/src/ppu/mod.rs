@@ -9,13 +9,17 @@ pub type Frame = Box<[u8; FRAME_WIDTH * FRAME_HEIGHT]>;
 
 pub struct Ppu {
     frame: Option<Frame>,
+    cycles: u32
 }
 
 impl Default for Ppu {
     fn default() -> Self {
         // TODO
 
-        let mut ppu = Self { frame: None };
+        let mut ppu = Self {
+            frame: None,
+            cycles: 0
+        };
 
         ppu.allocate_new_frame();
 
@@ -26,21 +30,28 @@ impl Default for Ppu {
 impl Ppu {
     pub fn clock(&mut self) {
         // TODO
+        self.cycles += 1;
     }
 
     pub fn ready_frame(&mut self) -> Option<Frame> {
         // TODO: Only returns when the frame is actually done
 
-        // Returns the current frame buffer
-        let frame = self
-            .frame
-            .take()
-            .expect("the frame buffer should never be unallocated");
+        if self.cycles >= 70224 {
+            self.cycles = 0;
 
-        // Allocate a new frame buffer
-        self.allocate_new_frame();
+            // Returns the current frame buffer
+            let frame = self
+                .frame
+                .take()
+                .expect("the frame buffer should never be unallocated");
 
-        Some(frame)
+            // Allocate a new frame buffer
+            self.allocate_new_frame();
+
+            Some(frame)
+        } else {
+            None
+        }
     }
 
     fn allocate_new_frame(&mut self) {

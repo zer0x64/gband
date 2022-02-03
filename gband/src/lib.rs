@@ -29,6 +29,8 @@ pub struct Emulator {
     // == CPU Related Hardware == //
     cpu: Cpu,
     wram: [u8; WRAM_BANK_SIZE as usize * 8],
+    // 0x7F instead of 0x80 is not a mistake, as the last byte is used to access interupts
+    hram: [u8; 0x7F],
 
     // == PPU Related Hardware == //
     ppu: Ppu,
@@ -40,6 +42,7 @@ pub struct Emulator {
     joypad_register: u8,
 
     // == Emulation Specific Data == //
+    serial_port_buffer: alloc::vec::Vec<u8>,
     clock_count: u8,
 }
 
@@ -51,12 +54,14 @@ impl Emulator {
             cartridge,
             cpu: Default::default(),
             wram: [0u8; WRAM_BANK_SIZE as usize * 8],
+            hram: [0u8; 0x7F],
 
             ppu: Default::default(),
 
             joypad_state: Default::default(),
             joypad_register: Default::default(),
 
+            serial_port_buffer: alloc::vec::Vec::with_capacity(256),
             clock_count: 0,
         };
 
@@ -64,20 +69,22 @@ impl Emulator {
     }
 
     pub fn clock(&mut self) -> Option<Frame> {
-        // Clock PPU every 2 cycles
-        if self.clock_count & 1 == 0 {
-            self.ppu.clock();
-        };
+        self.clock_count += 1;
 
-        // Clock CPU every 4 cycles
-        if self.clock_count & 2 == 0 {
+        // clock_count is at ~4MHz
+        // PPU is clocked at ~4MHz
+        self.ppu.clock();
+
+        // We clock CPU on M-cycles, at ~1MHz on regular mode and ~2MHz on CGB double speed mode
+        // This means we clock it every 2 or 4 cycles
+        if self.clock_count == 4 {
             let mut cpu_bus = borrow_cpu_bus!(self);
             self.cpu.clock(&mut cpu_bus);
 
-            self.clock_count = 0;
+            if self.clock_count == 4 {
+                self.clock_count = 0;
+            }
         };
-
-        self.clock_count += 1;
 
         self.ppu.ready_frame()
     }

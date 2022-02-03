@@ -7,37 +7,47 @@ use crate::WRAM_BANK_SIZE;
 #[macro_export]
 macro_rules! borrow_cpu_bus {
     ($owner:ident) => {{
-        $crate::bus::CpuBus::borrow(&mut $owner.wram,
+        $crate::bus::CpuBus::borrow(
+            &mut $owner.wram,
+            &mut $owner.hram,
             &mut $owner.cartridge,
             &mut $owner.ppu,
             &$owner.joypad_state,
-            &mut $owner.joypad_register)
+            &mut $owner.joypad_register,
+            &mut $owner.serial_port_buffer
+        )
     }};
 }
 
 pub struct CpuBus<'a> {
     wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
+    hram: &'a mut [u8; 0x7F],
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
     joypad_state: &'a JoypadState,
     joypad_register: &'a mut u8,
+    serial_port_buffer: &'a mut alloc::vec::Vec<u8>,
 }
 
 impl<'a> CpuBus<'a> {
     #[allow(clippy::too_many_arguments)] // it's fine, it's used by a macro
     pub fn borrow(
         wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
+        hram: &'a mut [u8; 0x7F],
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
         joypad_state: &'a JoypadState,
         joypad_register: &'a mut u8,
+        serial_port_buffer: &'a mut alloc::vec::Vec<u8>,
     ) -> Self {
         Self {
             wram,
+            hram,
             cartridge,
             ppu,
             joypad_state,
             joypad_register,
+            serial_port_buffer
         }
     }
 }
@@ -60,6 +70,27 @@ impl CpuBus<'_> {
             0xFF00 => {
                 // Joypad
                 self.write_joypad_reg(data)
+            },
+            0xFF01 => {
+                // Serial transfer data (SB)
+                if data == 10u8 {
+                    if !self.serial_port_buffer.is_empty() {
+                        log::info!("Serial port: {}", self.serial_port_buffer
+                            .iter()
+                            .flat_map(|c| (*c as char).escape_default())
+                            .collect::<alloc::string::String>()
+                        );
+                        self.serial_port_buffer.clear();
+                    }
+                } else {
+                    self.serial_port_buffer.push(data);
+                }
+            },
+            0xFF02 => {
+                // Serial transfer control (SC)
+            },
+            0xFF80..=0xFFFE => {
+                self.hram[(addr & 0x7E) as usize] = data
             },
             _ => {
                 // TODO: handle full memory map
@@ -84,6 +115,9 @@ impl CpuBus<'_> {
             0xFF00 => {
                 // Joypad
                 self.read_joypad_reg()
+            },
+            0xFF80..=0xFFFE => {
+                self.hram[(addr & 0x7E) as usize]
             },
             _ => {
                 // TODO: handle full memory map
