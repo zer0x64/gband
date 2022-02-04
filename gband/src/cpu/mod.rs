@@ -36,9 +36,10 @@ pub struct Cpu {
     pub f: FlagRegister,
     pub sp: u16,
     pub pc: u16,
-    pub cycles: u8,
 
-    pub opcode_latch: Opcode
+    pub cycles: u8,
+    pub opcode_latch: Opcode,
+    pub interrupt_master_enable: bool,
 }
 
 impl Default for Cpu {
@@ -55,9 +56,10 @@ impl Default for Cpu {
             f: FlagRegister::Z,
             sp: 0xFFFE,
             pc: 0x0100,
-            cycles: 0,
 
-            opcode_latch: Opcode::Unknown
+            cycles: 0,
+            opcode_latch: Opcode::Unknown,
+            interrupt_master_enable: false,
         }
     }
 }
@@ -385,7 +387,7 @@ impl Cpu {
             Opcode::Reti => {
                 let addr = self.pop_stack(bus);
                 self.pc = addr;
-                // TODO: Add interrupt enable IME=1
+                self.interrupt_master_enable = true;
             }
             Opcode::Rst(addr) => {
                 self.push_stack(bus, self.pc);
@@ -408,10 +410,10 @@ impl Cpu {
                 // TODO: Implement stop
             }
             Opcode::Di => {
-                // TODO: Implement interruptions
+                self.interrupt_master_enable = false;
             }
             Opcode::Ei => {
-                // TODO: Implement interruptions
+                self.interrupt_master_enable = true;
             }
         }
     }
@@ -708,6 +710,7 @@ impl Cpu {
 mod tests {
     use super::*;
     use crate::Cartridge;
+    use crate::InterruptState;
     use crate::JoypadState;
     use crate::Ppu;
     use crate::RomParserError;
@@ -719,6 +722,7 @@ mod tests {
         pub cpu: Cpu,
         pub wram: [u8; WRAM_BANK_SIZE as usize * 8],
         pub hram: [u8; 0x7F],
+        pub interrupts: InterruptState,
         pub joypad_state: JoypadState,
         pub joypad_register: u8,
         pub ppu: Ppu,
@@ -736,6 +740,7 @@ mod tests {
                 cpu: Default::default(),
                 wram: [0u8; WRAM_BANK_SIZE as usize * 8],
                 hram: [0u8; 0x7F],
+                interrupts: Default::default(),
                 joypad_state: Default::default(),
                 joypad_register: 0,
                 ppu: Default::default(),

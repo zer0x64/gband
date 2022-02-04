@@ -8,6 +8,7 @@ pub mod bus; // TODO: Revert pub added for criterion
 mod cartridge;
 mod joypad_state;
 mod cpu;
+mod interrupt;
 mod ppu;
 mod rgb_palette;
 pub mod utils;
@@ -15,6 +16,7 @@ pub mod utils;
 pub use cartridge::RomParserError;
 pub use joypad_state::JoypadState;
 pub use cpu::Cpu;
+pub use interrupt::{ InterruptState, InterruptReg };
 pub use ppu::{Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH};
 
 // TODO: Revert pub added for criterion
@@ -31,6 +33,7 @@ pub struct Emulator {
     wram: [u8; WRAM_BANK_SIZE as usize * 8],
     // 0x7F instead of 0x80 is not a mistake, as the last byte is used to access interupts
     hram: [u8; 0x7F],
+    interrupts: InterruptState,
 
     // == PPU Related Hardware == //
     ppu: Ppu,
@@ -53,6 +56,8 @@ impl Emulator {
         let emulator = Self {
             cartridge,
             cpu: Default::default(),
+            interrupts: Default::default(),
+
             wram: [0u8; WRAM_BANK_SIZE as usize * 8],
             hram: [0u8; 0x7F],
 

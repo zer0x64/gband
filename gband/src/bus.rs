@@ -1,4 +1,6 @@
 use crate::Cartridge;
+use crate::InterruptReg;
+use crate::InterruptState;
 use crate::JoypadState;
 use crate::Ppu;
 use crate::WRAM_BANK_SIZE;
@@ -10,6 +12,7 @@ macro_rules! borrow_cpu_bus {
         $crate::bus::CpuBus::borrow(
             &mut $owner.wram,
             &mut $owner.hram,
+            &mut $owner.interrupts,
             &mut $owner.cartridge,
             &mut $owner.ppu,
             &$owner.joypad_state,
@@ -22,6 +25,7 @@ macro_rules! borrow_cpu_bus {
 pub struct CpuBus<'a> {
     wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
     hram: &'a mut [u8; 0x7F],
+    interrupts: &'a mut InterruptState,
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
     joypad_state: &'a JoypadState,
@@ -34,6 +38,7 @@ impl<'a> CpuBus<'a> {
     pub fn borrow(
         wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
         hram: &'a mut [u8; 0x7F],
+        interrupts: &'a mut InterruptState,
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
         joypad_state: &'a JoypadState,
@@ -43,6 +48,7 @@ impl<'a> CpuBus<'a> {
         Self {
             wram,
             hram,
+            interrupts,
             cartridge,
             ppu,
             joypad_state,
@@ -89,8 +95,14 @@ impl CpuBus<'_> {
             0xFF02 => {
                 // Serial transfer control (SC)
             },
+            0xFF0F => {
+                self.interrupts.status = InterruptReg::from_bits_truncate(data)
+            },
             0xFF80..=0xFFFE => {
                 self.hram[(addr & 0x7E) as usize] = data
+            },
+            0xFFFF => {
+                self.interrupts.enable = InterruptReg::from_bits_truncate(data)
             },
             _ => {
                 // TODO: handle full memory map
@@ -116,8 +128,14 @@ impl CpuBus<'_> {
                 // Joypad
                 self.read_joypad_reg()
             },
+            0xFF0F => {
+                self.interrupts.status.bits()
+            },
             0xFF80..=0xFFFE => {
                 self.hram[(addr & 0x7E) as usize]
+            },
+            0xFFFF => {
+                self.interrupts.enable.bits()
             },
             _ => {
                 // TODO: handle full memory map
