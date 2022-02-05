@@ -2,17 +2,9 @@ mod decoder;
 
 use bitflags::bitflags;
 
-use crate::bus::CpuBus;
+use crate::{bus::CpuBus, OamDma};
 use decoder::{
-    Alu,
-    Condition,
-    Opcode,
-    OpcodeCB,
-    OpMemAddress8,
-    OpMemAddress16,
-    Register,
-    RegisterPair,
-    Rot
+    Alu, Condition, OpMemAddress16, OpMemAddress8, Opcode, OpcodeCB, Register, RegisterPair, Rot,
 };
 
 bitflags! {
@@ -54,6 +46,7 @@ impl Default for Cpu {
             l: 0x0D,
             a: 0x11,
             f: FlagRegister::Z,
+
             sp: 0xFFFE,
             pc: 0x0100,
 
@@ -66,6 +59,8 @@ impl Default for Cpu {
 
 impl Cpu {
     pub fn clock(&mut self, bus: &mut CpuBus) {
+        self.handle_oam_dma(bus);
+
         // Fetch/Execute overlap, last cycle of execute runs at the same time as the next fetch
         if self.cycles != 0 {
             self.execute(bus);
@@ -106,9 +101,7 @@ impl Cpu {
             }
             Opcode::LdRMem(target, source) => {
                 let val = match source {
-                    OpMemAddress16::Register(source) => {
-                        bus.read(self.get_register_pair(source))
-                    }
+                    OpMemAddress16::Register(source) => bus.read(self.get_register_pair(source)),
                     OpMemAddress16::RegisterIncrease(source) => {
                         let reg = self.get_register_pair(source);
                         self.set_register_pair(source, reg.wrapping_add(1));
@@ -129,9 +122,7 @@ impl Cpu {
             }
             Opcode::LdMemR(target, source) => {
                 let addr = match target {
-                    OpMemAddress16::Register(target) => {
-                        self.get_register_pair(target)
-                    }
+                    OpMemAddress16::Register(target) => self.get_register_pair(target),
                     OpMemAddress16::RegisterIncrease(target) => {
                         let reg = self.get_register_pair(target);
                         self.set_register_pair(target, reg.wrapping_add(1));
@@ -142,9 +133,7 @@ impl Cpu {
                         self.set_register_pair(target, reg.wrapping_sub(1));
                         reg
                     }
-                    OpMemAddress16::Immediate => {
-                        self.read_immediate16(bus)
-                    }
+                    OpMemAddress16::Immediate => self.read_immediate16(bus),
                 };
 
                 bus.write(addr, self.get_register(source));
@@ -154,18 +143,20 @@ impl Cpu {
                 bus.write(self.get_register_pair(target), immediate);
             }
             Opcode::LdhRead(target, source) => {
-                let addr = 0xFF00 | match source {
-                    OpMemAddress8::Register(source) => self.get_register(source),
-                    OpMemAddress8::Immediate => self.read_immediate(bus),
-                } as u16;
+                let addr = 0xFF00
+                    | match source {
+                        OpMemAddress8::Register(source) => self.get_register(source),
+                        OpMemAddress8::Immediate => self.read_immediate(bus),
+                    } as u16;
 
                 self.set_register(target, bus.read(addr));
             }
             Opcode::LdhWrite(target, source) => {
-                let addr = 0xFF00 | match target {
-                    OpMemAddress8::Register(target) => self.get_register(target),
-                    OpMemAddress8::Immediate => self.read_immediate(bus),
-                } as u16;
+                let addr = 0xFF00
+                    | match target {
+                        OpMemAddress8::Register(target) => self.get_register(target),
+                        OpMemAddress8::Immediate => self.read_immediate(bus),
+                    } as u16;
 
                 bus.write(addr, self.get_register(source));
             }
@@ -177,7 +168,6 @@ impl Cpu {
                 let addr = self.read_immediate16(bus);
                 bus.write(addr, (self.sp & 0x00FF) as u8);
                 bus.write(addr + 1, (self.sp >> 8) as u8);
-
             }
             Opcode::Ld16SpHL => {
                 self.sp = self.get_register_pair(RegisterPair::HL);
@@ -309,7 +299,7 @@ impl Cpu {
                 let carry = (self.sp & 0x00FF) + (immediate & 0x00FF) > 0x00FF;
                 let half_carry = (self.sp & 0x000F) + (immediate & 0x000F) > 0x000F;
 
-                self.set_register_pair(RegisterPair::HL,self.sp.wrapping_add(immediate));
+                self.set_register_pair(RegisterPair::HL, self.sp.wrapping_add(immediate));
                 self.f.set(FlagRegister::C, carry);
                 self.f.set(FlagRegister::H, half_carry);
                 self.f.set(FlagRegister::N, false);
@@ -394,7 +384,8 @@ impl Cpu {
                 self.pc = addr as u16;
             }
             Opcode::Ccf => {
-                self.f.set(FlagRegister::C, !self.f.contains(FlagRegister::C));
+                self.f
+                    .set(FlagRegister::C, !self.f.contains(FlagRegister::C));
                 self.f.remove(FlagRegister::N);
                 self.f.remove(FlagRegister::H);
             }
@@ -597,12 +588,22 @@ impl Cpu {
             }
             Rot::Rl => {
                 let carry = val & 0x80 == 0x80;
-                let result = (val << 1) | (if self.f.contains(FlagRegister::C) { 1 } else { 0 });
+                let result = (val << 1)
+                    | (if self.f.contains(FlagRegister::C) {
+                        1
+                    } else {
+                        0
+                    });
                 (result, carry)
             }
             Rot::Rr => {
                 let carry = val & 0x01 == 0x01;
-                let result = (val >> 1) | (if self.f.contains(FlagRegister::C) { 0x80 } else { 0 });
+                let result = (val >> 1)
+                    | (if self.f.contains(FlagRegister::C) {
+                        0x80
+                    } else {
+                        0
+                    });
                 (result, carry)
             }
             Rot::Sla => {
@@ -616,9 +617,7 @@ impl Cpu {
                 let result = (val >> 1) | (val & 0x80);
                 (result, carry)
             }
-            Rot::Swap => {
-                (val.swap_bytes(), false)
-            }
+            Rot::Swap => (val.swap_bytes(), false),
             Rot::Srl => {
                 let carry = val & 0x01 == 0x01;
                 let result = val >> 1;
@@ -704,6 +703,38 @@ impl Cpu {
             }
         }
     }
+
+    fn handle_oam_dma(&mut self, bus: &mut CpuBus) {
+        // OAM DMA
+        let mut oam_dma = bus.get_oam_dma();
+        let (is_oam_dma, reset_oam_dma) = match &mut oam_dma {
+            OamDma {
+                cycle: Some(c),
+                source,
+            } => {
+                // Each cycle, DMA reads and write one byte from source to destination
+                let data = bus.read_without_dma_check(((*source as u16) << 8) | (*c as u16), true);
+                bus.write_without_dma_check(0xFE00 | (*c as u16), data, true);
+                *c += 1;
+
+                (true, *c >= 0xA0)
+            }
+            _ => {
+                // No DMA currently
+                (false, false)
+            }
+        };
+
+        // Borrow checker hack to update with the new state
+        if reset_oam_dma {
+            // Stop DMA
+            oam_dma.cycle = None
+        }
+        if is_oam_dma {
+            // Update the value
+            bus.set_oam_dma(oam_dma);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -712,6 +743,7 @@ mod tests {
     use crate::Cartridge;
     use crate::InterruptState;
     use crate::JoypadState;
+    use crate::OamDma;
     use crate::Ppu;
     use crate::RomParserError;
     use crate::WRAM_BANK_SIZE;
@@ -723,6 +755,7 @@ mod tests {
         pub wram: [u8; WRAM_BANK_SIZE as usize * 8],
         pub hram: [u8; 0x7F],
         pub interrupts: InterruptState,
+        pub oam_dma: OamDma,
         pub joypad_state: JoypadState,
         pub joypad_register: u8,
         pub ppu: Ppu,
@@ -741,6 +774,7 @@ mod tests {
                 wram: [0u8; WRAM_BANK_SIZE as usize * 8],
                 hram: [0u8; 0x7F],
                 interrupts: Default::default(),
+                oam_dma: Default::default(),
                 joypad_state: Default::default(),
                 joypad_register: 0,
                 ppu: Default::default(),

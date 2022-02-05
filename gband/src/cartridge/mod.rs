@@ -7,6 +7,8 @@ use mappers::*;
 
 pub use header::RomParserError;
 
+use self::header::CgbFlag;
+
 pub enum CartridgeReadTarget {
     Error,
     Rom(usize),
@@ -116,5 +118,9 @@ impl Cartridge {
             Some(r) => Some(r),
             None => None,
         }
+    }
+
+    pub fn is_cgb(&self) -> bool {
+        !matches!(self.header.cgb_flag, CgbFlag::NoCgb)
     }
 }

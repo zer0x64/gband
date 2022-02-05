@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 
+#[derive(Clone, Copy)]
 pub struct InterruptState {
     pub enable: InterruptReg,
     pub status: InterruptReg,

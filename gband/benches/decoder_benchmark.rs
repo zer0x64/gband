@@ -1,6 +1,8 @@
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use gband::{
+    borrow_cpu_bus, Cartridge, Cpu, InterruptState, JoypadState, OamDma, Ppu, RomParserError,
+};
 use std::time::Duration;
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
-use gband::{borrow_cpu_bus, Cpu, Ppu, Cartridge, JoypadState, RomParserError, InterruptState};
 
 struct MockEmulator {
     pub cartridge: Cartridge,
@@ -8,6 +10,7 @@ struct MockEmulator {
     pub wram: [u8; 0x1000 as usize * 8],
     pub hram: [u8; 0x7F],
     pub interrupts: InterruptState,
+    pub oam_dma: OamDma,
     pub joypad_state: JoypadState,
     pub joypad_register: u8,
     pub ppu: Ppu,
@@ -26,6 +29,7 @@ impl MockEmulator {
             wram: [0u8; 0x1000 as usize * 8],
             hram: [0u8; 0x7F],
             interrupts: Default::default(),
+            oam_dma: Default::default(),
             joypad_state: Default::default(),
             joypad_register: 0,
             ppu: Default::default(),
@@ -44,7 +48,9 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     // LdRMem, Add16HL, LdRImm, LdRR, LdRR, LdRR, LdRMem, LdRMem, LdRR, AluR, LdMemR
     //     10,      57,     62,   64,   65,   80,     94,    102,  127,  128,    234
-    for opcode in [0x0A, 0x39, 0x3E, 0x40, 0x41, 0x50, 0x5E, 0x66, 0x7F, 0x80, 0xEA] {
+    for opcode in [
+        0x0A, 0x39, 0x3E, 0x40, 0x41, 0x50, 0x5E, 0x66, 0x7F, 0x80, 0xEA,
+    ] {
         group.bench_with_input(BenchmarkId::new("fetch", opcode), &opcode, |b, opcode| {
             let mut emulator = MockEmulator::new().unwrap();
             emulator.wram[0] = *opcode;
