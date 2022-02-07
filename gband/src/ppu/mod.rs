@@ -49,7 +49,7 @@ pub struct Ppu {
 
     cycle: u16,
     fifo_mode: FifoMode,
-    frame: Option<Frame>,
+    frame: Frame,
 }
 
 impl Default for Ppu {
@@ -90,18 +90,14 @@ impl Default for Ppu {
 
             cycle: 0,
             fifo_mode: Default::default(),
-            frame: None,
+            frame: allocate_new_frame(),
         }
     }
 }
 
 impl Ppu {
     pub fn new() -> Self {
-        let mut ppu: Self = Default::default();
-
-        ppu.allocate_new_frame();
-
-        ppu
+        Self::default()
     }
 
     pub fn clock(&mut self, bus: &mut PpuBus) {
@@ -180,14 +176,10 @@ impl Ppu {
 
     pub fn ready_frame(&mut self) -> Option<Frame> {
         if self.y == 0 && self.cycle == 0 {
-            // Returns the current frame buffer
-            let frame = self
-                .frame
-                .take()
-                .expect("the frame buffer should never be unallocated");
+            let new_frame = allocate_new_frame();
 
-            // Allocate a new frame buffer
-            self.allocate_new_frame();
+            // Replace current frame with the newly allocated one
+            let frame = core::mem::replace(&mut self.frame, new_frame);
 
             Some(frame)
         } else {
@@ -348,18 +340,19 @@ impl Ppu {
         status_reg.bits()
     }
 
-    fn allocate_new_frame(&mut self) {
-        //   Hackish way to create fixed size boxed array.
-        // I don't know of any way to do it without
-        // having the data allocated on the stack at some point or using unsafe
-        let v: Vec<u8> = vec![0u8; FRAME_WIDTH * FRAME_HEIGHT];
-        let b = v.into_boxed_slice();
 
-        // Safety: This only uses constants and the fonction doesn't have arguments
-        self.frame = unsafe {
-            Some(Box::from_raw(
-                Box::into_raw(b) as *mut [u8; FRAME_WIDTH * FRAME_HEIGHT]
-            ))
         }
+    }
+}
+
+fn allocate_new_frame() -> Frame {
+    //   Hackish way to create fixed size boxed array.
+    // I don't know of any way to do it without
+    // having the data allocated on the stack at some point or using unsafe
+    unsafe {
+        // Safety: allocated vector has the right size for a frame array
+        // (that is `FRAME_WIDTH * FRAME_HEIGHT`)
+        let v: Vec<u8> = vec![0u8; FRAME_WIDTH * FRAME_HEIGHT];
+        Box::from_raw(Box::into_raw(v.into_boxed_slice()) as *mut [u8; FRAME_WIDTH * FRAME_HEIGHT])
     }
 }
