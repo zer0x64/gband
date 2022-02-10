@@ -267,9 +267,6 @@ impl Ppu {
             0xFF4C => {
                 // rKEY0 is blocked after boot
             }
-            0xFF4D => {
-                // I don't know what rKEY1 is used for, but it's probably blocked after boot
-            }
             0xFF68 => self.cgb_bg_palette.write_spec(data),
             0xFF69 => self.cgb_bg_palette.write_data(data, self.fifo_mode),
             0xFF6A => self.cgb_obj_palette.write_spec(data),
@@ -294,10 +291,6 @@ impl Ppu {
             0xFF4B => self.window_x,
             0xFF4C => {
                 // rKEY0 is blocked after boot
-                0xFF
-            }
-            0xFF4D => {
-                // I don't know what rKEY1 is used for, but it's probably blocked after boot
                 0xFF
             }
             0xFF68 => self.cgb_bg_palette.read_spec(),
@@ -338,10 +331,6 @@ impl Ppu {
         status_reg.set_mode(self.fifo_mode);
 
         status_reg.bits()
-    }
-
-
-        }
     }
 }
 

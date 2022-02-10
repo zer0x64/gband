@@ -32,6 +32,9 @@ pub struct Cpu {
     pub cycles: u8,
     pub opcode_latch: Opcode,
     pub interrupt_master_enable: bool,
+    pub ime_pending: Option<bool>,
+    pub halted: bool,
+    pub halt_bug_active: bool,
 }
 
 impl Default for Cpu {
@@ -53,6 +56,9 @@ impl Default for Cpu {
             cycles: 0,
             opcode_latch: Opcode::Unknown,
             interrupt_master_enable: false,
+            ime_pending: None,
+            halted: false,
+            halt_bug_active: false,
         }
     }
 }
@@ -62,7 +68,7 @@ impl Cpu {
         self.handle_oam_dma(bus);
 
         // Fetch/Execute overlap, last cycle of execute runs at the same time as the next fetch
-        if self.cycles != 0 {
+        if !self.halted && self.cycles != 0 {
             self.execute(bus);
 
             // We are not emulating cycle-accurate yet, so just reset the latch to unknown to noop the remaining cycles
@@ -72,7 +78,47 @@ impl Cpu {
         }
 
         if self.cycles == 0 {
-            self.fetch(bus);
+            match self.ime_pending {
+                Some(true) => self.ime_pending = Some(false),
+                Some(false) => {
+                    self.interrupt_master_enable = true;
+                    self.ime_pending = None;
+                }
+                None => {}
+            }
+
+            self.handle_interrupt(bus);
+
+            if !self.halted {
+                self.fetch(bus);
+            }
+        }
+    }
+
+    fn handle_interrupt(&mut self, bus: &mut CpuBus) {
+        let interrupts_status = bus.read(0xFF0F);
+        let interrupts_enable = bus.read(0xFFFF);
+
+        // Get the highest priority interrupt requested, bit 0 is higher priority
+        let pending = interrupts_enable & interrupts_status & 0x1F;
+        let pending_index = pending.trailing_zeros() as u16;
+
+        if pending != 0 {
+            // Wake up from halt, even if ime is not set
+            self.halted = false;
+
+            if self.interrupt_master_enable {
+                // Unset ime and request flag
+                self.interrupt_master_enable = false;
+                bus.write(0xFF0F, interrupts_status & !(1 << pending_index));
+
+                // Save pc and run ISR
+                self.push_stack(bus, self.pc);
+                self.pc = 0x0040 + 0x0008 * pending_index;
+
+                // The ISR takes 5 cycles
+                self.cycles = 5;
+            }
         }
     }
 
@@ -80,6 +126,12 @@ impl Cpu {
     pub fn fetch(&mut self, bus: &mut CpuBus) {
         self.opcode_latch = Opcode::from(self.read_immediate(bus));
         self.cycles = self.opcode_latch.cycles();
+
+        if self.halt_bug_active {
+            // Revert pc increment here, instead of running this on every read_immediate
+            self.pc = self.pc.wrapping_sub(1);
+            self.halt_bug_active = false;
+        }
     }
 
     // TODO: Remove pub added for criterion
@@ -268,7 +320,7 @@ impl Cpu {
                 let val = self.get_register_pair(RegisterPair::HL);
                 let source = self.get_register_pair(source);
                 let (result, carry) = val.overflowing_add(source);
-                let half_carry = (val & 0x07FF) + (source & 0x07FF) > 0x07FF;
+                let half_carry = (val & 0x0FFF) + (source & 0x0FFF) > 0x0FFF;
 
                 self.set_register_pair(RegisterPair::HL, result);
                 self.f.set(FlagRegister::C, carry);
@@ -277,7 +329,7 @@ impl Cpu {
             }
             Opcode::Add16SPSigned => {
                 // Reinterpret the immediate as signed, then convert to unsigned u16 equivalent
-                let immediate = self.read_immediate(bus) as i8 as i16 as u16;
+                let immediate = self.read_immediate(bus) as i8 as u16;
                 let carry = (self.sp & 0x00FF) + (immediate & 0x00FF) > 0x00FF;
                 let half_carry = (self.sp & 0x000F) + (immediate & 0x000F) > 0x000F;
 
@@ -336,12 +388,12 @@ impl Cpu {
                 let addr = self.read_immediate16(bus);
                 if self.check_conditional(condition) {
                     self.cycles += 1;
-                    self.pc = addr
+                    self.pc = addr;
                 }
             }
             Opcode::JpRel => {
                 let offset = self.read_immediate(bus) as i8;
-                self.pc = self.pc.wrapping_add(offset as u16)
+                self.pc = self.pc.wrapping_add(offset as u16);
             }
             Opcode::JpRelCond(condition) => {
                 let offset = self.read_immediate(bus) as i8;
@@ -377,6 +429,8 @@ impl Cpu {
             Opcode::Reti => {
                 let addr = self.pop_stack(bus);
                 self.pc = addr;
+
+                // IME enable is NOT delayed to the next instruction.
                 self.interrupt_master_enable = true;
             }
             Opcode::Rst(addr) => {
@@ -395,16 +449,27 @@ impl Cpu {
                 self.f.remove(FlagRegister::H);
             }
             Opcode::Halt => {
-                // TODO: Implement halt
+                let interrupts_status = bus.read(0xFF0F);
+                let interrupts_enable = bus.read(0xFFFF);
+                let pending = interrupts_enable & interrupts_status & 0x1F;
+
+                // If there is already an interrupt pending AND IME is false, skip halt completely
+                if !self.interrupt_master_enable && pending != 0 {
+                    self.halt_bug_active = true;
+                } else {
+                    self.halted = true;
+                }
             }
             Opcode::Stop => {
-                // TODO: Implement stop
+                // TODO: Completely implement stop (sleep portion...?)
+                bus.toggle_double_speed();
             }
             Opcode::Di => {
                 self.interrupt_master_enable = false;
             }
             Opcode::Ei => {
-                self.interrupt_master_enable = true;
+                // IME enable is delayed to the next instruction.
+                self.ime_pending = Some(true);
             }
         }
     }
@@ -617,7 +682,7 @@ impl Cpu {
                 let result = (val >> 1) | (val & 0x80);
                 (result, carry)
             }
-            Rot::Swap => (val.swap_bytes(), false),
+            Rot::Swap => (((val & 0x0f) << 4) | ((val & 0xf0) >> 4), false),
             Rot::Srl => {
                 let carry = val & 0x01 == 0x01;
                 let result = val >> 1;
@@ -741,6 +806,7 @@ impl Cpu {
 mod tests {
     use super::*;
     use crate::Cartridge;
+    use crate::CgbDoubleSpeed;
     use crate::InterruptState;
     use crate::JoypadState;
     use crate::OamDma;
@@ -755,6 +821,7 @@ mod tests {
         pub wram: [u8; WRAM_BANK_SIZE as usize * 8],
         pub hram: [u8; 0x7F],
         pub interrupts: InterruptState,
+        pub double_speed: CgbDoubleSpeed,
         pub oam_dma: OamDma,
         pub joypad_state: JoypadState,
         pub joypad_register: u8,
@@ -774,6 +841,7 @@ mod tests {
                 wram: [0u8; WRAM_BANK_SIZE as usize * 8],
                 hram: [0u8; 0x7F],
                 interrupts: Default::default(),
+                double_speed: Default::default(),
                 oam_dma: Default::default(),
                 joypad_state: Default::default(),
                 joypad_register: 0,

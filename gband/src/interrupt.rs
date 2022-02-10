@@ -10,7 +10,7 @@ impl Default for InterruptState {
     fn default() -> Self {
         Self {
             enable: Default::default(),
-            status: Default::default(),
+            status: InterruptReg::from_bits_truncate(0xE1),
         }
     }
 }
@@ -23,5 +23,6 @@ bitflags! {
         const TIMER = 0x04;
         const SERIAL = 0x08;
         const JOYPAD = 0x10;
+        const UNUSED = 0xE0;
     }
 }

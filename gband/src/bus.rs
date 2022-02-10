@@ -1,6 +1,6 @@
 use crate::oam_dma::OamDma;
 use crate::Cartridge;
-use crate::Cpu;
+use crate::CgbDoubleSpeed;
 use crate::InterruptReg;
 use crate::InterruptState;
 use crate::JoypadState;
@@ -15,6 +15,7 @@ macro_rules! borrow_cpu_bus {
             &mut $owner.wram,
             &mut $owner.hram,
             &mut $owner.interrupts,
+            &mut $owner.double_speed,
             &mut $owner.oam_dma,
             &mut $owner.cartridge,
             &mut $owner.ppu,
@@ -29,6 +30,7 @@ pub struct CpuBus<'a> {
     wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
     hram: &'a mut [u8; 0x7F],
     interrupts: &'a mut InterruptState,
+    double_speed: &'a mut CgbDoubleSpeed,
     oam_dma: &'a mut OamDma,
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
@@ -43,6 +45,7 @@ impl<'a> CpuBus<'a> {
         wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
         hram: &'a mut [u8; 0x7F],
         interrupts: &'a mut InterruptState,
+        double_speed: &'a mut CgbDoubleSpeed,
         oam_dma: &'a mut OamDma,
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
@@ -54,6 +57,7 @@ impl<'a> CpuBus<'a> {
             wram,
             hram,
             interrupts,
+            double_speed,
             oam_dma,
             cartridge,
             ppu,
@@ -143,16 +147,20 @@ impl CpuBus<'_> {
             0xFF02 => {
                 // Serial transfer control (SC)
             }
+            0xFF0F => self.interrupts.status = InterruptReg::from_bits_truncate(0xE0 | data),
             0xFF46 => {
                 // OAM DMA
                 self.request_oam_dma(data)
             }
-            0xFF40..=0xFF45 | 0xFF47..=0xFF6F => {
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF6F => {
                 // PPU control reg
                 self.ppu.write(addr, data)
             }
-            0xFF0F => self.interrupts.status = InterruptReg::from_bits_truncate(data),
-            0xFF80..=0xFFFE => self.hram[(addr & 0x7E) as usize] = data,
+            0xFF4D => {
+                // KEY1
+                self.double_speed.set(CgbDoubleSpeed::PENDING, (data & 1) != 0)
+            }
+            0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
             0xFFFF => self.interrupts.enable = InterruptReg::from_bits_truncate(data),
             _ => {
                 // TODO: handle full memory map
@@ -186,16 +194,28 @@ impl CpuBus<'_> {
                 // Joypad
                 self.read_joypad_reg()
             }
+            0xFF01 => {
+                // Serial transfer data (SB)
+                0
+            }
+            0xFF02 => {
+                // Serial transfer control (SC)
+                0x7E
+            }
             0xFF0F => self.interrupts.status.bits(),
             0xFF46 => {
                 // OAM DMA
                 self.read_oam_dma()
             }
-            0xFF40..=0xFF45 | 0xFF47..=0xFF6F => {
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF6F => {
                 // PPU control reg
                 self.ppu.read(addr)
             }
-            0xFF80..=0xFFFE => self.hram[(addr & 0x7E) as usize],
+            0xFF4D => {
+                // KEY1
+                self.double_speed.bits()
+            }
+            0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize],
             0xFFFF => self.interrupts.enable.bits(),
             _ => {
                 // TODO: handle full memory map
@@ -249,6 +269,13 @@ impl CpuBus<'_> {
 
     pub fn read_joypad_reg(&self) -> u8 {
         *self.joypad_register
+    }
+
+    pub fn toggle_double_speed(&mut self) {
+        if self.double_speed.contains(CgbDoubleSpeed::PENDING) {
+            self.double_speed.toggle(CgbDoubleSpeed::ENABLED);
+            self.double_speed.remove(CgbDoubleSpeed::PENDING);
+        }
     }
 
     pub fn request_oam_dma(&mut self, source: u8) {

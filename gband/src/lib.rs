@@ -6,6 +6,7 @@ extern crate alloc;
 pub mod bus; // TODO: Revert pub added for criterion
 
 mod cartridge;
+mod cgb_double_speed;
 mod cpu;
 mod interrupt;
 mod joypad_state;
@@ -15,6 +16,7 @@ mod rgb_palette;
 pub mod utils;
 
 pub use cartridge::RomParserError;
+pub use cgb_double_speed::CgbDoubleSpeed;
 pub use cpu::Cpu;
 pub use interrupt::{InterruptReg, InterruptState};
 pub use joypad_state::JoypadState;
@@ -36,7 +38,7 @@ pub struct Emulator {
     // 0x7F instead of 0x80 is not a mistake, as the last byte is used to access interupts
     hram: [u8; 0x7F],
     interrupts: InterruptState,
-    double_speed_mode: bool,
+    double_speed: CgbDoubleSpeed,
     oam_dma: OamDma,
 
     // == PPU Related Hardware == //
@@ -63,10 +65,10 @@ impl Emulator {
             cartridge,
             cpu: Default::default(),
             interrupts: Default::default(),
+            double_speed: Default::default(),
 
             wram: [0u8; WRAM_BANK_SIZE as usize * 8],
             hram: [0u8; 0x7F],
-            double_speed_mode: false,
             oam_dma: Default::default(),
 
             ppu: Ppu::new(),
@@ -92,7 +94,8 @@ impl Emulator {
 
         // We clock CPU on M-cycles, at ~1MHz on regular mode and ~2MHz on CGB double speed mode
         // This means we clock it every 2 or 4 cycles
-        if (self.clock_count == 2 && self.double_speed_mode) || self.clock_count == 4 {
+        let double_speed = self.double_speed.contains(CgbDoubleSpeed::ENABLED);
+        if (double_speed && self.clock_count == 2) || self.clock_count == 4 {
             let mut cpu_bus = borrow_cpu_bus!(self);
             self.cpu.clock(&mut cpu_bus);
 

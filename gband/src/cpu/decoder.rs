@@ -36,13 +36,28 @@ pub enum Alu {
     Cp = 7,
 }
 
-#[derive(TryFromPrimitive, Clone, Copy, Debug)]
+#[derive(TryFromPrimitive, Clone, Copy)]
 #[repr(u8)]
 pub enum Condition {
     NonZero = 0,
     Zero = 1,
     NoCarry = 2,
     Carry = 3,
+}
+
+impl core::fmt::Debug for Condition {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Condition::NonZero => "nz",
+                Condition::Zero => "z",
+                Condition::NoCarry => "nc",
+                Condition::Carry => "c",
+            }
+        )
+    }
 }
 
 #[derive(TryFromPrimitive, Clone, Copy, Debug)]
