@@ -1,9 +1,11 @@
 use super::CartridgeReadTarget;
 
 mod mbc1;
+mod mbc2;
 mod no_mapper;
 
 pub use mbc1::Mbc1;
+pub use mbc2::Mbc2;
 pub use no_mapper::NoMapper;
 
 pub trait Mapper: Send + Sync {

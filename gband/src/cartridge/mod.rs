@@ -13,6 +13,7 @@ pub enum CartridgeReadTarget {
     Error,
     Rom(usize),
     Ram(usize),
+    RamHalf(usize),
 }
 
 pub struct Cartridge {
@@ -36,7 +37,7 @@ impl Cartridge {
         let mut ram = match header.ram_banks {
             RamBanks::Banks(n) => {
                 // 1 bank is 8 KiB
-                Some(alloc::vec![0u8; n*8*1024])
+                Some(alloc::vec![0u8; n * 8 * 1024])
             }
             RamBanks::Mbc2 => Some(alloc::vec![0u8; 512]),
             _ => None,
@@ -70,6 +71,9 @@ impl Cartridge {
             CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery => {
                 Box::new(Mbc1::new(header.rom_banks, ram_banks))
             }
+            CartridgeType::Mbc2 | CartridgeType::Mbc2Battery => {
+                Box::new(Mbc2::new(header.rom_banks))
+            }
             _ => return Err(RomParserError::MapperNotImplemented),
         };
 
@@ -87,6 +91,15 @@ impl Cartridge {
             CartridgeReadTarget::Rom(addr) => self.rom[addr % self.rom.len()],
             CartridgeReadTarget::Ram(addr) => match &self.ram {
                 Some(ram) => ram[addr % ram.len()],
+                None => {
+                    log::warn!(
+                        "Tried to read Cartridge RAM at {addr}, but the cartridge has no ram!"
+                    );
+                    0
+                }
+            },
+            CartridgeReadTarget::RamHalf(addr) => match &self.ram {
+                Some(ram) => (ram[addr % ram.len()] & 0xF),
                 None => {
                     log::warn!(
                         "Tried to read Cartridge RAM at {addr}, but the cartridge has no ram!"
