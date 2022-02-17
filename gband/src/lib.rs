@@ -13,6 +13,7 @@ mod joypad_state;
 mod oam_dma;
 mod ppu;
 mod rgb_palette;
+mod timer_regs;
 pub mod utils;
 
 pub use cartridge::RomParserError;
@@ -25,6 +26,7 @@ pub use ppu::{Frame, Ppu, FRAME_HEIGHT, FRAME_WIDTH};
 // TODO: Revert pub added for criterion
 pub use cartridge::Cartridge;
 pub use oam_dma::OamDma;
+pub use timer_regs::TimerRegisters;
 
 const WRAM_BANK_SIZE: u16 = 0x1000; // 4KiB
 
@@ -40,6 +42,7 @@ pub struct Emulator {
     interrupts: InterruptState,
     double_speed: CgbDoubleSpeed,
     oam_dma: OamDma,
+    timer_registers: TimerRegisters,
 
     // == PPU Related Hardware == //
     ppu: Ppu,
@@ -66,6 +69,7 @@ impl Emulator {
             cpu: Default::default(),
             interrupts: Default::default(),
             double_speed: Default::default(),
+            timer_registers: Default::default(),
 
             wram: [0u8; WRAM_BANK_SIZE as usize * 8],
             hram: [0u8; 0x7F],

@@ -2,7 +2,7 @@ mod decoder;
 
 use bitflags::bitflags;
 
-use crate::{bus::CpuBus, OamDma};
+use crate::{bus::CpuBus, InterruptReg, OamDma};
 use decoder::{
     Alu, Condition, OpMemAddress16, OpMemAddress8, Opcode, OpcodeCB, Register, RegisterPair, Rot,
 };
@@ -66,6 +66,11 @@ impl Default for Cpu {
 impl Cpu {
     pub fn clock(&mut self, bus: &mut CpuBus) {
         self.handle_oam_dma(bus);
+
+        // TODO: Don't clock if the CPU is STOPped
+        if bus.get_timer_registers().clock() {
+            bus.request_interrupt(InterruptReg::TIMER);
+        }
 
         // Fetch/Execute overlap, last cycle of execute runs at the same time as the next fetch
         if !self.halted && self.cycles != 0 {
@@ -462,6 +467,7 @@ impl Cpu {
             }
             Opcode::Stop => {
                 // TODO: Completely implement stop (sleep portion...?)
+                bus.get_timer_registers().reset_div();
                 bus.toggle_double_speed();
             }
             Opcode::Di => {
@@ -812,6 +818,7 @@ mod tests {
     use crate::OamDma;
     use crate::Ppu;
     use crate::RomParserError;
+    use crate::TimerRegisters;
     use crate::WRAM_BANK_SIZE;
     use alloc::vec;
 
@@ -823,6 +830,7 @@ mod tests {
         pub interrupts: InterruptState,
         pub double_speed: CgbDoubleSpeed,
         pub oam_dma: OamDma,
+        pub timer_registers: TimerRegisters,
         pub joypad_state: JoypadState,
         pub joypad_register: u8,
         pub ppu: Ppu,
@@ -843,6 +851,7 @@ mod tests {
                 interrupts: Default::default(),
                 double_speed: Default::default(),
                 oam_dma: Default::default(),
+                timer_registers: Default::default(),
                 joypad_state: Default::default(),
                 joypad_register: 0,
                 ppu: Default::default(),

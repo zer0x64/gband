@@ -5,6 +5,7 @@ use crate::InterruptReg;
 use crate::InterruptState;
 use crate::JoypadState;
 use crate::Ppu;
+use crate::TimerRegisters;
 use crate::WRAM_BANK_SIZE;
 
 // TODO: Revert macro_export added for criterion
@@ -17,6 +18,7 @@ macro_rules! borrow_cpu_bus {
             &mut $owner.interrupts,
             &mut $owner.double_speed,
             &mut $owner.oam_dma,
+            &mut $owner.timer_registers,
             &mut $owner.cartridge,
             &mut $owner.ppu,
             &$owner.joypad_state,
@@ -32,6 +34,7 @@ pub struct CpuBus<'a> {
     interrupts: &'a mut InterruptState,
     double_speed: &'a mut CgbDoubleSpeed,
     oam_dma: &'a mut OamDma,
+    timer_registers: &'a mut TimerRegisters,
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
     joypad_state: &'a JoypadState,
@@ -47,6 +50,7 @@ impl<'a> CpuBus<'a> {
         interrupts: &'a mut InterruptState,
         double_speed: &'a mut CgbDoubleSpeed,
         oam_dma: &'a mut OamDma,
+        timer_registers: &'a mut TimerRegisters,
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
         joypad_state: &'a JoypadState,
@@ -59,6 +63,7 @@ impl<'a> CpuBus<'a> {
             interrupts,
             double_speed,
             oam_dma,
+            timer_registers,
             cartridge,
             ppu,
             joypad_state,
@@ -147,6 +152,7 @@ impl CpuBus<'_> {
             0xFF02 => {
                 // Serial transfer control (SC)
             }
+            0xFF04..=0xFF07 => self.timer_registers.write(addr, data),
             0xFF0F => self.interrupts.status = InterruptReg::from_bits_truncate(0xE0 | data),
             0xFF46 => {
                 // OAM DMA
@@ -158,7 +164,8 @@ impl CpuBus<'_> {
             }
             0xFF4D => {
                 // KEY1
-                self.double_speed.set(CgbDoubleSpeed::PENDING, (data & 1) != 0)
+                self.double_speed
+                    .set(CgbDoubleSpeed::PENDING, (data & 1) != 0)
             }
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
             0xFFFF => self.interrupts.enable = InterruptReg::from_bits_truncate(data),
@@ -202,6 +209,7 @@ impl CpuBus<'_> {
                 // Serial transfer control (SC)
                 0x7E
             }
+            0xFF04..=0xFF07 => self.timer_registers.read(addr),
             0xFF0F => self.interrupts.status.bits(),
             0xFF46 => {
                 // OAM DMA
@@ -295,6 +303,14 @@ impl CpuBus<'_> {
 
     pub fn set_oam_dma(&mut self, oam_dma: OamDma) {
         *self.oam_dma = oam_dma;
+    }
+
+    pub fn get_timer_registers(&mut self) -> &mut TimerRegisters {
+        self.timer_registers
+    }
+
+    pub fn request_interrupt(&mut self, interrupt: InterruptReg) {
+        self.interrupts.status.insert(interrupt)
     }
 
     fn check_oam_dma_bus_conflict(source: u8, addr: u16) -> bool {
