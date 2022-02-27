@@ -72,7 +72,10 @@ impl Cartridge {
                 Box::new(Mbc1::new(header.rom_banks, ram_banks))
             }
             CartridgeType::Mbc2 | CartridgeType::Mbc2Battery => {
-                Box::new(Mbc2::new(header.rom_banks))
+                Box::new(Mbc2::new())
+            }
+            CartridgeType::Mbc5 | CartridgeType::Mbc5Ram | CartridgeType::Mbc5RamBattery | CartridgeType::Mbc5Rumble | CartridgeType::Mbc5RumbleRam | CartridgeType::Mbc5RumbleRamBattery => {
+                Box::new(Mbc5::new())
             }
             _ => return Err(RomParserError::MapperNotImplemented),
         };

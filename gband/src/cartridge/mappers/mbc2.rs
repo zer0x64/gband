@@ -3,15 +3,13 @@ use crate::cartridge::CartridgeReadTarget;
 
 pub struct Mbc2 {
     bank_mask: usize,
-    n_rom_banks: usize,
     ram_enable: bool,
     rom_bank_number: u8,
 }
 
 impl Mbc2 {
-    pub fn new(n_rom_banks: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            n_rom_banks,
             ..Default::default()
         }
     }
@@ -21,7 +19,6 @@ impl Default for Mbc2 {
     fn default() -> Self {
         Self {
             bank_mask: 0xF,
-            n_rom_banks: 0,
             ram_enable: false,
             rom_bank_number: 0x01,
         }
@@ -42,7 +39,7 @@ impl Mapper for Mbc2 {
                 // Maximum of 16 banks supported
                 let mask = 0x3FFF;
                 let addr = (addr & mask) as usize;
-                let mut bank = (self.rom_bank_number as usize) << 14usize;
+                let bank = (self.rom_bank_number as usize) << 14usize;
 
                 CartridgeReadTarget::Rom(bank | addr)
             }
@@ -51,7 +48,7 @@ impl Mapper for Mbc2 {
                 // 0xA200-0xBFFF -> Repeat of 0xA000-0xA1FF
                 if self.ram_enable {
                     let mask = 0x1FF;
-                    CartridgeReadTarget::Ram((addr & mask) as usize)
+                    CartridgeReadTarget::RamHalf((addr & mask) as usize)
                 } else {
                     CartridgeReadTarget::Error
                 }
