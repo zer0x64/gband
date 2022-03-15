@@ -102,7 +102,6 @@ impl Mapper for Mbc3 {
 
                     let bank = (self.ram_or_rtc_bank_number as usize) << 13usize;
                     Some(bank | addr)
-
                 } else {
                     // RAM and RTC are disabled, nothing to do
                     None

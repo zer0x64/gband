@@ -1,3 +1,4 @@
+use crate::emulation_thread::{EmulatorInput, EmulatorState};
 use crate::State;
 
 use std::io::{stdin, stdout, Write};
@@ -5,12 +6,10 @@ use std::io::{stdin, stdout, Write};
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
-use gband::Frame;
-
 #[derive(Debug, StructOpt)]
 #[structopt(no_version)]
 /// Nestadia debugger commands, inspired by GDB
-enum DebuggerOpt {
+pub enum DebuggerOpt {
     #[structopt(visible_alias = "c", no_version)]
     /// Resume execution of the emulator
     Continue,
@@ -60,7 +59,7 @@ enum DebuggerOpt {
 
 #[derive(Debug, StructOpt)]
 #[structopt(no_version)]
-enum DebuggerInfoOpt {
+pub enum DebuggerInfoOpt {
     #[structopt(visible_alias = "b", no_version)]
     /// Display the breakpoints currently set
     Break,
@@ -74,113 +73,86 @@ fn parse_hex_addr(src: &str) -> Result<u16, std::num::ParseIntError> {
     u16::from_str_radix(src, 16)
 }
 
-impl State {
-    pub fn debugger_prompt(&mut self) -> Option<Frame> {
-        let mut frame = None;
+impl EmulatorState {
+    pub fn handle_debugger_inputs(&mut self, input: DebuggerOpt) {
+        match input {
+            DebuggerOpt::Continue => self
+                .paused
+                .store(false, std::sync::atomic::Ordering::Relaxed),
+            DebuggerOpt::Step => {
+                let current_pc = self.emulator.cpu().pc;
+                while {
+                    if let Some(step_frame) = self.emulator.clock() {
+                        self.update_frame(step_frame.as_slice());
+                    }
+                    self.emulator.cpu().cycles > 0 || self.emulator.cpu().pc == current_pc
+                } {}
 
-        print!("debugger> ");
-        stdout().flush().unwrap();
+                self.disassemble(None);
+                self.print_registers(None);
+            }
+            DebuggerOpt::Break { addr } => {
+                let disassembly = self.emulator.disassemble(0, 0);
+                let closest_addr = disassembly
+                    .iter()
+                    .min_by_key(|&(_, x, _)| (x.wrapping_sub(addr)))
+                    .unwrap()
+                    .1;
 
-        let mut input = String::new();
-        stdin().read_line(&mut input).unwrap();
-
-        let tokens = input.split_ascii_whitespace();
-        let clap = DebuggerOpt::clap()
-            .global_setting(AppSettings::NoBinaryName)
-            .global_setting(AppSettings::DisableVersion)
-            .global_setting(AppSettings::VersionlessSubcommands)
-            .get_matches_from_safe(tokens);
-
-        match clap {
-            Ok(clap) => {
-                let opt = DebuggerOpt::from_clap(&clap);
-                match opt {
-                    DebuggerOpt::Continue => self.paused = false,
-                    DebuggerOpt::Break { addr } => self.add_breakpoint(addr),
-                    DebuggerOpt::Delete { index } => self.remove_breakpoint(index),
-                    DebuggerOpt::Step => self.step(&mut frame),
-                    DebuggerOpt::Info(info) => match info {
-                        DebuggerInfoOpt::Break => self.print_breakpoints(),
-                        DebuggerInfoOpt::Reg { register } => self.print_registers(register),
-                    },
-                    DebuggerOpt::Disassemble { search_addr } => self.disassemble(search_addr),
-                    DebuggerOpt::Hexdump {
-                        start_addr,
-                        end_addr,
-                    } => self.hexdump(start_addr, end_addr),
+                self.breakpoints.push(closest_addr);
+                println!("Added breakpoint at {:#06x}", closest_addr);
+            }
+            DebuggerOpt::Delete { index } => {
+                if let Some(index) = index {
+                    let removed = self.breakpoints.remove(index);
+                    println!("Removed breakpoint {}: {:#06x}", index, removed);
+                } else {
+                    self.breakpoints.clear();
+                    println!("Cleared all breakpoints");
                 }
             }
-            Err(e) => println!("{}", e.message),
-        }
+            DebuggerOpt::Disassemble { search_addr } => self.disassemble(search_addr),
+            DebuggerOpt::Hexdump {
+                start_addr,
+                end_addr,
+            } => {
+                // Align start address to get 16 values
+                let start_addr = start_addr - (start_addr & 0xf);
+                let data = self.emulator.mem_dump(start_addr, end_addr);
 
-        frame
-    }
+                for (i, chunk) in data.chunks(16).enumerate() {
+                    let addr = start_addr + (16 * i as u16);
 
-    fn add_breakpoint(&mut self, addr: u16) {
-        let disassembly = self.emulator.disassemble(0, 0);
-        let closest_addr = disassembly
-            .iter()
-            .min_by_key(|&(_, x, _)| (x.wrapping_sub(addr)))
-            .unwrap()
-            .1;
+                    let bytes = chunk
+                        .iter()
+                        .map(|c| format!("{:02x}", c))
+                        .collect::<Vec<_>>()
+                        .join(" ");
 
-        self.breakpoints.push(closest_addr);
-        println!("Added breakpoint at {:#06x}", closest_addr);
-    }
+                    let ascii = chunk
+                        .iter()
+                        .map(|num| {
+                            if *num >= 32 && *num <= 126 {
+                                (*num as char).to_string()
+                            } else {
+                                '.'.to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("");
 
-    fn remove_breakpoint(&mut self, index: Option<usize>) {
-        if let Some(index) = index {
-            let removed = self.breakpoints.remove(index);
-            println!("Removed breakpoint {}: {:#06x}", index, removed);
-        } else {
-            self.breakpoints.clear();
-            println!("Cleared all breakpoints");
-        }
-    }
-
-    fn step(&mut self, frame: &mut Option<Frame>) {
-        let current_pc = self.emulator.cpu().pc;
-        while {
-            if let Some(step_frame) = self.emulator.clock() {
-                *frame = Some(step_frame);
+                    println!("{:#06x}: {:47} {}", addr, bytes, ascii);
+                }
             }
-            self.emulator.cpu().cycles > 0 || self.emulator.cpu().pc == current_pc
-        } {}
-
-        self.disassemble(None);
-        self.print_registers(None);
-    }
-
-    fn print_breakpoints(&self) {
-        for (index, addr) in self.breakpoints.iter().enumerate() {
-            println!("Breakpoint {}: {:#06x}", index, addr);
+            DebuggerOpt::Info(info) => match info {
+                DebuggerInfoOpt::Break => {
+                    for (index, addr) in self.breakpoints.iter().enumerate() {
+                        println!("Breakpoint {}: {:#06x}", index, addr);
+                    }
+                }
+                DebuggerInfoOpt::Reg { register } => self.print_registers(register),
+            },
         }
-    }
-
-    fn print_registers(&self, _register: Option<String>) {
-        let _cpu = self.emulator.cpu();
-
-        // TODO: Print GB registers
-        /*if let Some(register) = register {
-            match register.as_str() {
-                "a" => println!("a: {:#06x}", cpu.a),
-                "x" => println!("x: {:#06x}", cpu.x),
-                "y" => println!("y: {:#06x}", cpu.y),
-                "st" => println!("st: {:#06x}", cpu.st),
-                "pc" => println!("pc: {:#06x}", cpu.pc),
-                "status" => println!("status: {:#06x}", cpu.status_register),
-                reg => println!("Unknown register: {}", reg),
-            }
-        } else {
-            println!(
-                " a: {:#06x}      x: {:#06x}      y: {:#06x}",
-                cpu.a, cpu.x, cpu.y
-            );
-            println!(
-                "st: {:#06x}     pc: {:#06x} status: {:#06x}",
-                cpu.st, cpu.pc, cpu.status_register
-            );
-        }*/
     }
 
     fn disassemble(&self, search_addr: Option<u16>) {
@@ -214,33 +186,56 @@ impl State {
         }
     }
 
-    fn hexdump(&mut self, start_addr: u16, end_addr: u16) {
-        // Align start address to get 16 values
-        let start_addr = start_addr - (start_addr & 0xf);
-        let data = self.emulator.mem_dump(start_addr, end_addr);
+    fn print_registers(&self, _register: Option<String>) {
+        let _cpu = self.emulator.cpu();
 
-        for (i, chunk) in data.chunks(16).enumerate() {
-            let addr = start_addr + (16 * i as u16);
+        // TODO: Print GB registers
+        /*if let Some(register) = register {
+            match register.as_str() {
+                "a" => println!("a: {:#06x}", cpu.a),
+                "x" => println!("x: {:#06x}", cpu.x),
+                "y" => println!("y: {:#06x}", cpu.y),
+                "st" => println!("st: {:#06x}", cpu.st),
+                "pc" => println!("pc: {:#06x}", cpu.pc),
+                "status" => println!("status: {:#06x}", cpu.status_register),
+                reg => println!("Unknown register: {}", reg),
+            }
+        } else {
+            println!(
+                " a: {:#06x}      x: {:#06x}      y: {:#06x}",
+                cpu.a, cpu.x, cpu.y
+            );
+            println!(
+                "st: {:#06x}     pc: {:#06x} status: {:#06x}",
+                cpu.st, cpu.pc, cpu.status_register
+            );
+        }*/
+    }
+}
 
-            let bytes = chunk
-                .iter()
-                .map(|c| format!("{:02x}", c))
-                .collect::<Vec<_>>()
-                .join(" ");
+impl State {
+    pub fn debugger_prompt(&mut self) {
+        print!("debugger> ");
+        stdout().flush().unwrap();
 
-            let ascii = chunk
-                .iter()
-                .map(|num| {
-                    if *num >= 32 && *num <= 126 {
-                        (*num as char).to_string()
-                    } else {
-                        '.'.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("");
+        let mut input = String::new();
+        stdin().read_line(&mut input).unwrap();
 
-            println!("{:#06x}: {:47} {}", addr, bytes, ascii);
+        let tokens = input.split_ascii_whitespace();
+        let clap = DebuggerOpt::clap()
+            .global_setting(AppSettings::NoBinaryName)
+            .global_setting(AppSettings::DisableVersion)
+            .global_setting(AppSettings::VersionlessSubcommands)
+            .get_matches_from_safe(tokens);
+
+        match clap {
+            Ok(clap) => {
+                let opt = DebuggerOpt::from_clap(&clap);
+                self.emulator_input
+                    .send(EmulatorInput::DebuggerInput(opt))
+                    .expect("Emulation thread crashed!");
+            }
+            Err(e) => println!("{}", e.message),
         }
     }
 }

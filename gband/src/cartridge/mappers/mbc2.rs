@@ -77,7 +77,6 @@ impl Mapper for Mbc2 {
                         self.rom_bank_number = bank_number;
                     }
                     None
-
                 } else {
                     // Enabling or disabling RAM
                     self.ram_enable = data == 0x0A;
@@ -90,7 +89,6 @@ impl Mapper for Mbc2 {
                 if self.ram_enable {
                     let mask = 0x1FF;
                     Some((addr & mask) as usize)
-
                 } else {
                     // RAM is disabled, nothing to do
                     None

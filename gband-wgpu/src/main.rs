@@ -1,3 +1,4 @@
+use emulation_thread::EmulatorInput;
 use futures::executor::block_on;
 use gband::{Emulator, JoypadState};
 use wgpu::util::DeviceExt;
@@ -6,7 +7,8 @@ use std::{
     fs::OpenOptions,
     io::{Read, Write},
     path::Path,
-    time::{Duration, Instant},
+    sync::{atomic::AtomicBool, mpsc::Sender, Arc},
+    thread::JoinHandle,
 };
 
 use winit::{
@@ -31,6 +33,7 @@ struct Opt {
 }
 
 mod debugger;
+mod emulation_thread;
 
 // This maps the keyboard input to a controller input
 fn winit_to_gband_input(keycode: &VirtualKeyCode) -> Result<JoypadState, ()> {
@@ -47,12 +50,6 @@ fn winit_to_gband_input(keycode: &VirtualKeyCode) -> Result<JoypadState, ()> {
     }
 }
 
-// Target for NTSC is ~60 FPS
-const FRAME_TIME: Duration = Duration::from_nanos(1_000_000_000 / 60);
-
-// GB outputs a 160 x 144 pixel image
-const NUM_PIXELS: usize = gband::FRAME_HEIGHT * gband::FRAME_WIDTH;
-
 // A 2D position is mapped to a 2D texture.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -65,7 +62,7 @@ impl Vertex {
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
@@ -83,39 +80,38 @@ impl Vertex {
 }
 
 struct State {
-    emulator: Emulator,
-    controller: JoypadState,
-    last_frame_time: Instant,
+    emulator_input: Sender<EmulatorInput>,
+    joypad: JoypadState,
 
-    paused: bool,
-    breakpoints: Vec<u16>,
+    thread_join_handles: Vec<JoinHandle<()>>,
+
+    paused: Arc<AtomicBool>,
 
     surface: wgpu::Surface,
+    config: wgpu::SurfaceConfiguration,
     device: wgpu::Device,
-    queue: wgpu::Queue,
-    sc_desc: wgpu::SwapChainDescriptor,
-    swap_chain: wgpu::SwapChain,
+    queue: Arc<wgpu::Queue>,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
 
-    screen_texture: wgpu::Texture,
     screen_bind_group: wgpu::BindGroup,
 }
 
 impl State {
     /// Create a new state and initialize the rendering pipeline.
-    async fn new(window: &winit::window::Window, emulator: Emulator) -> Self {
+    async fn new(window: &winit::window::Window, emulator: Emulator, paused: bool) -> Self {
         let size = window.inner_size();
 
         // Used prefered graphic API
-        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+        let instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { instance.create_surface(window) };
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
             })
             .await
             .unwrap();
@@ -132,26 +128,28 @@ impl State {
             .await
             .unwrap();
 
-        // Note: Present mode: Immediate is there to disable Vsync since it breaks the timing.
-        // We wouldn't have to do this if we were making an actual game, but in the case of a NES emulator,
-        // logic is tied to the framerate.
-        let sc_desc = wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-            format: adapter.get_swap_chain_preferred_format(&surface).unwrap(),
+        // Using an Arc because this will be shared with the emulation thread
+        let queue = Arc::new(queue);
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface.get_preferred_format(&adapter).unwrap(),
             width: size.width,
             height: size.height,
-            present_mode: wgpu::PresentMode::Immediate,
+            present_mode: wgpu::PresentMode::Fifo,
         };
+        surface.configure(&device, &config);
 
-        let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+        let emulator_width = gband::FRAME_WIDTH as u32;
+        let emulator_height = gband::FRAME_HEIGHT as u32;
 
         // Create the texture to show the emulator screen
         let texture_size = wgpu::Extent3d {
-            width: gband::FRAME_WIDTH as u32,
-            height: gband::FRAME_HEIGHT as u32,
+            width: emulator_width,
+            height: emulator_height,
             depth_or_array_layers: 1,
         };
 
+        // Using an Arc here because this will be shared with the emulation thread
         let screen_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Screen Texture"),
             size: texture_size,
@@ -159,23 +157,24 @@ impl State {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
         // Write an initial black screen before the first frame arrive
-        let texture = [0u8; NUM_PIXELS * 4];
+        let texture = vec![0u8; (emulator_width * emulator_height * 4) as usize];
 
         queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &screen_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
             },
             &texture,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * gband::FRAME_WIDTH as u32),
-                rows_per_image: std::num::NonZeroU32::new(gband::FRAME_HEIGHT as u32),
+                bytes_per_row: std::num::NonZeroU32::new(4 * emulator_width),
+                rows_per_image: std::num::NonZeroU32::new(emulator_height),
             },
             texture_size,
         );
@@ -200,7 +199,7 @@ impl State {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
@@ -210,11 +209,8 @@ impl State {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler {
-                            comparison: false,
-                            filtering: true,
-                        },
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
                 ],
@@ -236,11 +232,7 @@ impl State {
         });
 
         // Load the shader
-        let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            flags: wgpu::ShaderFlags::all(),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
+        let shader = device.create_shader_module(&wgpu::include_wgsl!("shaders/base.wgsl"));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -254,16 +246,16 @@ impl State {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "main",
+                entry_point: "vs_main",
                 buffers: &[Vertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "main",
+                entry_point: "fs_main",
                 targets: &[wgpu::ColorTargetState {
-                    format: sc_desc.format,
+                    format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrite::ALL,
+                    write_mask: wgpu::ColorWrites::ALL,
                 }],
             }),
             primitive: wgpu::PrimitiveState {
@@ -272,7 +264,7 @@ impl State {
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
                 polygon_mode: wgpu::PolygonMode::Fill,
-                clamp_depth: false,
+                unclipped_depth: false,
                 conservative: false,
             },
             depth_stencil: None,
@@ -281,6 +273,7 @@ impl State {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
+            multiview: None,
         });
 
         // Maps the four corner of the screen to the four corner of the texture
@@ -309,44 +302,48 @@ impl State {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsage::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("index Buffer"),
             contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsage::INDEX,
+            usage: wgpu::BufferUsages::INDEX,
         });
 
-        Self {
-            emulator,
-            controller: Default::default(),
-            last_frame_time: Instant::now(),
+        let paused = Arc::new(AtomicBool::new(paused));
+        let (join_handle, emulator_input) =
+            emulation_thread::start(emulator, queue.clone(), screen_texture, paused.clone());
 
-            paused: false,
-            breakpoints: Vec::new(),
+        let thread_join_handles = vec![join_handle];
+
+        Self {
+            emulator_input,
+            thread_join_handles,
+            joypad: JoypadState::default(),
+            paused,
 
             surface,
+            config,
             device,
             queue,
-            sc_desc,
-            swap_chain,
             size,
             render_pipeline,
             vertex_buffer,
             index_buffer,
 
-            screen_texture,
             screen_bind_group,
         }
     }
 
     /// Update the size of the window so rendering is aware of the change
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        self.size = new_size;
-        self.sc_desc.width = new_size.width;
-        self.sc_desc.height = new_size.height;
-        self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
+        if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
+            self.surface.configure(&self.device, &self.config);
+        }
     }
 
     /// This is where we handle controller inputs
@@ -360,9 +357,9 @@ impl State {
                     ..
                 } => {
                     if let Ok(f) = winit_to_gband_input(key_code) {
-                        self.controller.insert(f);
+                        self.joypad.insert(f);
 
-                        self.emulator.set_joypad(self.controller);
+                        let _ = self.emulator_input.send(EmulatorInput::Input(self.joypad));
                         true
                     } else {
                         false
@@ -375,9 +372,9 @@ impl State {
                     ..
                 } => {
                     if let Ok(f) = winit_to_gband_input(key_code) {
-                        self.controller.remove(f);
+                        self.joypad.remove(f);
 
-                        self.emulator.set_joypad(self.controller);
+                        let _ = self.emulator_input.send(EmulatorInput::Input(self.joypad));
                         true
                     } else {
                         false
@@ -389,82 +386,19 @@ impl State {
         }
     }
 
-    /// Update the game state
     fn update(&mut self) {
-        if self.paused {
-            let frame = self.debugger_prompt();
-
-            if let Some(frame) = frame {
-                let mut current_frame = [0u8; NUM_PIXELS * 4];
-                gband::utils::frame_to_rgba(&frame, &mut current_frame);
-
-                // Update texture
-                let texture_size = wgpu::Extent3d {
-                    width: gband::FRAME_WIDTH as u32,
-                    height: gband::FRAME_HEIGHT as u32,
-                    depth_or_array_layers: 1,
-                };
-
-                self.queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &self.screen_texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                    },
-                    &current_frame,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: std::num::NonZeroU32::new(4 * gband::FRAME_WIDTH as u32),
-                        rows_per_image: std::num::NonZeroU32::new(gband::FRAME_HEIGHT as u32),
-                    },
-                    texture_size,
-                );
-            }
-        } else {
-            // Clock until a frame is ready
-            let frame = loop {
-                if self.breakpoints.contains(&self.emulator.cpu().pc) {
-                    println!("Reached breakpoint at {:#06x}", self.emulator.cpu().pc);
-                    self.paused = true;
-                    break None;
-                }
-                if let Some(frame) = self.emulator.clock() {
-                    break Some(frame);
-                }
-            };
-
-            if let Some(frame) = frame {
-                let mut current_frame = [0u8; NUM_PIXELS * 4];
-                gband::utils::frame_to_rgba(&frame, &mut current_frame);
-
-                // Update texture
-                let texture_size = wgpu::Extent3d {
-                    width: gband::FRAME_WIDTH as u32,
-                    height: gband::FRAME_HEIGHT as u32,
-                    depth_or_array_layers: 1,
-                };
-
-                self.queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &self.screen_texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                    },
-                    &current_frame,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: std::num::NonZeroU32::new(4 * gband::FRAME_WIDTH as u32),
-                        rows_per_image: std::num::NonZeroU32::new(gband::FRAME_HEIGHT as u32),
-                    },
-                    texture_size,
-                );
-            }
+        if self.paused.load(std::sync::atomic::Ordering::Relaxed) {
+            // Put the debugger prompt if paused
+            self.debugger_prompt()
         }
     }
 
     /// Render the screen
-    fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
-        let frame = self.swap_chain.get_current_frame()?.output;
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
             .device
@@ -475,7 +409,7 @@ impl State {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &frame.view,
+                    view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -499,26 +433,57 @@ impl State {
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
 
         Ok(())
     }
 
     fn save_data(&self, save_path: &Path) {
-        if let Some(save_data) = self.emulator.get_save_data() {
-            if let Ok(mut f) = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .open(&save_path)
-            {
-                let _ = f.write_all(save_data);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _ = self
+            .emulator_input
+            .send(EmulatorInput::RequestSaveData(sender));
+
+        match receiver
+            .recv()
+            .expect("Emulator crashed, couldn't retrieve save data!")
+        {
+            Some(save_data) => {
+                match OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .open(&save_path)
+                {
+                    Ok(mut f) => {
+                        let _ = f.write_all(&save_data);
+                    }
+                    _ => {}
+                }
             }
+            _ => {}
         }
     }
 
     fn pause(&mut self) {
-        self.paused = true;
+        self.paused
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         println!("Emulator is paused");
+    }
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        // Stop the emulator
+        let _ = self.emulator_input.send(EmulatorInput::Stop);
+
+        // Wait for the threads to stop
+        let mut handles = Vec::new();
+        std::mem::swap(&mut self.thread_join_handles, &mut handles);
+
+        for join_handle in handles {
+            join_handle.join().unwrap(); // unwrap here is to bubble up panics
+        }
     }
 }
 
@@ -567,33 +532,19 @@ fn main() {
     let emulator = Emulator::new(&rom, save_file).expect("Rom parsing failed");
 
     // Wait until WGPU is ready
-    let mut state = block_on(State::new(&window, emulator));
-    if opt.start_paused {
-        state.pause();
-    }
+    let mut state = block_on(State::new(&window, emulator, opt.start_paused));
 
     // Handle window events
     event_loop.run(move |event, _, control_flow| match event {
-        Event::RedrawRequested(_) => {
+        Event::RedrawRequested(_) => match state.render() {
+            Ok(_) => {}
+            Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+            Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+            Err(e) => eprintln!("{:?}", e),
+        },
+        Event::MainEventsCleared => {
             state.update();
-            match state.render() {
-                Ok(_) => {}
-                Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
-                Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                Err(e) => eprintln!("{:?}", e),
-            }
-        }
-
-        // If renderer is free, sync with 60 FPS and request the next frame.
-        // Note that this locks FPS at 60, however logic and FPS are bound together on the NES so this is normal.
-        Event::RedrawEventsCleared => {
-            let elapsed_time = state.last_frame_time.elapsed();
-            if elapsed_time >= FRAME_TIME {
-                state.last_frame_time = Instant::now();
-                window.request_redraw()
-            } else {
-                *control_flow = ControlFlow::WaitUntil(Instant::now() + FRAME_TIME - elapsed_time)
-            }
+            window.request_redraw();
         }
         Event::WindowEvent {
             ref event,

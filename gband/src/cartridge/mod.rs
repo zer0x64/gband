@@ -71,15 +71,18 @@ impl Cartridge {
             CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery => {
                 Box::new(Mbc1::new(header.rom_banks, ram_banks))
             }
-            CartridgeType::Mbc2 | CartridgeType::Mbc2Battery => {
-                Box::new(Mbc2::new())
-            }
-            CartridgeType::Mbc3TimerBattery | CartridgeType::Mbc3TimerRamBattery | CartridgeType::Mbc3 | CartridgeType::Mbc3Ram | CartridgeType::Mbc3RamBattery => {
-                Box::new(Mbc3::new())
-            }
-            CartridgeType::Mbc5 | CartridgeType::Mbc5Ram | CartridgeType::Mbc5RamBattery | CartridgeType::Mbc5Rumble | CartridgeType::Mbc5RumbleRam | CartridgeType::Mbc5RumbleRamBattery => {
-                Box::new(Mbc5::new())
-            }
+            CartridgeType::Mbc2 | CartridgeType::Mbc2Battery => Box::new(Mbc2::new()),
+            CartridgeType::Mbc3TimerBattery
+            | CartridgeType::Mbc3TimerRamBattery
+            | CartridgeType::Mbc3
+            | CartridgeType::Mbc3Ram
+            | CartridgeType::Mbc3RamBattery => Box::new(Mbc3::new()),
+            CartridgeType::Mbc5
+            | CartridgeType::Mbc5Ram
+            | CartridgeType::Mbc5RamBattery
+            | CartridgeType::Mbc5Rumble
+            | CartridgeType::Mbc5RumbleRam
+            | CartridgeType::Mbc5RumbleRamBattery => Box::new(Mbc5::new()),
             _ => return Err(RomParserError::MapperNotImplemented),
         };
 
@@ -113,7 +116,6 @@ impl Cartridge {
                     0
                 }
             },
-            CartridgeReadTarget::RegisterValue(value) => value,
         }
     }
 

@@ -97,7 +97,6 @@ impl Mapper for Mbc5 {
 
                     let bank = (self.ram_bank_number as usize) << 13usize;
                     Some(bank | addr)
-
                 } else {
                     // RAM is disabled, nothing to do
                     None

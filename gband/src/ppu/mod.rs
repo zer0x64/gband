@@ -18,7 +18,7 @@ use crate::InterruptReg;
 pub const FRAME_WIDTH: usize = 160;
 pub const FRAME_HEIGHT: usize = 144;
 
-pub type Frame = Box<[u8; FRAME_WIDTH * FRAME_HEIGHT]>;
+pub type Frame = Box<[u8; FRAME_WIDTH * FRAME_HEIGHT * 4]>;
 
 pub struct Ppu {
     x: u16,
@@ -341,7 +341,9 @@ fn allocate_new_frame() -> Frame {
     unsafe {
         // Safety: allocated vector has the right size for a frame array
         // (that is `FRAME_WIDTH * FRAME_HEIGHT`)
-        let v: Vec<u8> = vec![0u8; FRAME_WIDTH * FRAME_HEIGHT];
-        Box::from_raw(Box::into_raw(v.into_boxed_slice()) as *mut [u8; FRAME_WIDTH * FRAME_HEIGHT])
+        let v: Vec<u8> = vec![0u8; FRAME_WIDTH * FRAME_HEIGHT * 4];
+        Box::from_raw(
+            Box::into_raw(v.into_boxed_slice()) as *mut [u8; FRAME_WIDTH * FRAME_HEIGHT * 4]
+        )
     }
 }

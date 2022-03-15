@@ -3,6 +3,7 @@ members = [
     "./gband",
     "./gband-wgpu",
 ]
+resolver = "2"
 
 [profile.dev]
 # Slightly better optimizations.
