@@ -24,7 +24,7 @@ impl CgbPalette {
 
     pub fn write_data(&mut self, data: u8, mode: FifoMode) {
         match mode {
-            FifoMode::Drawing => {
+            FifoMode::Drawing(_) => {
                 // Write blocked during rendering
             }
             _ => {
@@ -45,7 +45,7 @@ impl CgbPalette {
 
     pub fn read_data(&self, mode: FifoMode) -> u8 {
         match mode {
-            FifoMode::Drawing => {
+            FifoMode::Drawing(_) => {
                 // Read blocked during rendering
                 0xFF
             }

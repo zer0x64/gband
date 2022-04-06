@@ -785,7 +785,7 @@ impl Cpu {
             } => {
                 // Each cycle, DMA reads and write one byte from source to destination
                 let data = bus.read_without_dma_check(((*source as u16) << 8) | (*c as u16), true);
-                bus.write_without_dma_check(0xFE00 | (*c as u16), data, true);
+                bus.write_without_dma_check(0xFE00 | ((*c & 0xFF) as u16), data, true);
                 *c += 1;
 
                 (true, *c >= 0xA0)

@@ -499,6 +499,10 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("GBAND")
+        .with_inner_size(winit::dpi::LogicalSize::new(
+            gband::FRAME_WIDTH as f32 * 4.0,
+            gband::FRAME_HEIGHT as f32 * 4.0,
+        ))
         .build(&event_loop)
         .unwrap();
 
