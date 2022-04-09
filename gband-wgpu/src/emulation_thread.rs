@@ -1,9 +1,9 @@
 use crate::debugger::DebuggerOpt;
 use gband::{Emulator, JoypadState};
+use spin_sleep::LoopHelper;
 use std::{
     sync::{atomic::AtomicBool, mpsc, Arc},
     thread::JoinHandle,
-    time::{Duration, Instant},
 };
 
 pub enum EmulatorInput {
@@ -23,14 +23,11 @@ pub struct EmulatorState {
     texture: wgpu::Texture,
 
     input_receiver: mpsc::Receiver<EmulatorInput>,
-    last_frame_time: Instant,
-    frame_time: Duration,
+    loop_helper: LoopHelper,
 }
 
 impl EmulatorState {
     pub fn run(&mut self) {
-        self.last_frame_time = Instant::now();
-
         loop {
             if self.paused.load(std::sync::atomic::Ordering::Relaxed) {
                 // Block on input if paused
@@ -50,23 +47,18 @@ impl EmulatorState {
                 }
 
                 // Emulation not paused, continue to run
-                let current_time = Instant::now();
+                self.loop_helper.loop_start();
 
-                if self.last_frame_time + self.frame_time < current_time {
-                    self.last_frame_time = Instant::now();
+                // Get a frame from the emulation and write it to the texture
+                let frame = loop {
+                    if let Some(f) = self.emulator.clock() {
+                        break f;
+                    }
+                };
 
-                    // Get a frame from the emulation and write it to the texture
-                    let frame = loop {
-                        if let Some(f) = self.emulator.clock() {
-                            break f;
-                        }
-                    };
+                self.update_frame(frame.as_slice());
 
-                    self.update_frame(frame.as_slice());
-                } else {
-                    // Sleep for the remaining time until the frame
-                    std::thread::sleep(self.last_frame_time + self.frame_time - current_time);
-                }
+                self.loop_helper.loop_sleep();
             }
         }
     }
@@ -126,8 +118,10 @@ pub fn start(
     paused: Arc<AtomicBool>,
 ) -> (JoinHandle<()>, mpsc::Sender<EmulatorInput>) {
     let (input_sender, input_receiver) = mpsc::channel::<EmulatorInput>();
-    let frame_time = Duration::from_secs_f32(1.0 / 59.727500569606);
-    let last_frame_time = Instant::now();
+
+    let loop_helper = LoopHelper::builder()
+        .report_interval_s(0.5)
+        .build_with_target_rate(59.727500569606);
 
     let mut emulator_state = EmulatorState {
         emulator,
@@ -138,8 +132,7 @@ pub fn start(
         breakpoints: Vec::new(),
 
         input_receiver,
-        frame_time,
-        last_frame_time,
+        loop_helper
     };
 
     let join_handle = std::thread::spawn(move || emulator_state.run());

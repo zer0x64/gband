@@ -16,3 +16,4 @@ gband = { path = "../gband", features = ["debugger"] }
 structopt = "0.3.21"
 wgpu = "0.12"
 winit = "0.26.1"
+spin_sleep = "1.1.1"
