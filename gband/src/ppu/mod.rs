@@ -17,7 +17,7 @@ use crate::bus::PpuBus;
 use crate::InterruptReg;
 
 use self::{
-    fifo_mode::{OamScanState, PixelFetcherState},
+    fifo_mode::{DrawingState, OamScanState, PixelFetcherState},
     pixel_fifo::PixelFifo,
 };
 
@@ -29,6 +29,8 @@ pub type Frame = Box<[u8; FRAME_WIDTH * FRAME_HEIGHT * 4]>;
 pub struct Ppu {
     x: u8,
     y: u8,
+    window_y_counter: u8,
+    window_y_flag: bool,
     y_compare: u8,
 
     window_x: u8,
@@ -64,6 +66,8 @@ impl Default for Ppu {
         Self {
             x: 0,
             y: 0,
+            window_y_counter: 0,
+            window_y_flag: false,
             y_compare: 0,
 
             window_x: 0,
@@ -149,6 +153,8 @@ impl Ppu {
                 154 => {
                     // End of the frame
                     self.y = 0;
+                    self.window_y_counter = 0;
+                    self.window_y_flag = false;
                     self.fifo_mode = FifoMode::OamScan(Default::default());
 
                     if self.lcd_status_reg.contains(LcdStatus::OAM_INTERUPT_SOURCE) {
@@ -174,7 +180,9 @@ impl Ppu {
             };
         };
 
-        self.render(bus);
+        if self.lcd_control_reg.contains(LcdControl::LCD_PPU_ENABLE) {
+            self.render(bus);
+        }
     }
 
     pub fn ready_frame(&mut self) -> Option<Frame> {
@@ -224,36 +232,38 @@ impl Ppu {
     }
 
     pub fn write_oam(&mut self, addr: u16, data: u8, force: bool) {
-        match self.fifo_mode {
-            FifoMode::OamScan { .. } | FifoMode::Drawing(_) => {
-                // Calls are blocked during this mode
-                // Do nothing, except if this is called by the OAM DMA
-                if !force {
-                    return;
-                }
-            }
-            _ => {
-                // Continue normally
-            }
-        }
+        // TODO: Redo write block
+        // match self.fifo_mode {
+        //     FifoMode::OamScan { .. } | FifoMode::Drawing(_) => {
+        //         // Calls are blocked during this mode
+        //         // Do nothing, except if this is called by the OAM DMA
+        //         if !force {
+        //             return;
+        //         }
+        //     }
+        //     _ => {
+        //         // Continue normally
+        //     }
+        // }
 
         let addr = addr & 0xFF;
         self.oam[addr as usize] = data;
     }
 
     pub fn read_oam(&self, addr: u16, force: bool) -> u8 {
-        match self.fifo_mode {
-            FifoMode::OamScan(_) | FifoMode::Drawing(_) => {
-                // Calls are blocked during this mode
-                // Do nothing and return trash, except if this is called by the OAM DMA
-                if !force {
-                    return 0xFF;
-                }
-            }
-            _ => {
-                // Continue normally
-            }
-        }
+        // TODO: Redo read block
+        // match self.fifo_mode {
+        //     FifoMode::OamScan(_) | FifoMode::Drawing(_) => {
+        //         // Calls are blocked during this mode
+        //         // Do nothing and return trash, except if this is called by the OAM DMA
+        //         if !force {
+        //             return 0xFF;
+        //         }
+        //     }
+        //     _ => {
+        //         // Continue normally
+        //     }
+        // }
 
         let addr = addr & 0xFF;
         self.oam[addr as usize]
@@ -365,7 +375,7 @@ impl Ppu {
                     // The index is y + 16, so the sprite can be hidden off at 0. This is why we add 16 here
                     let y_remainder = self.y.wrapping_sub(y).wrapping_add(16);
 
-                    *is_visible = y_remainder < sprite_size;
+                    *is_visible = (y_remainder < sprite_size) && (self.oam[*oam_pointer + 1] > 0);
                 } else {
                     // On odd cycle, copy it to the secondary OAM
                     if *is_visible {
@@ -387,17 +397,42 @@ impl Ppu {
                 // {
                 // NOTE: assuming non-GBC mode only for now
 
+                // Check for window
+                if self.y == self.window_y {
+                    self.window_y_flag = true;
+                }
+
                 if !state.is_window && self.lcd_control_reg.contains(LcdControl::WINDOW_ENABLE) {
-                    if self.y >= self.window_y && self.x >= self.window_x.wrapping_sub(7) {
+                    if self.window_y_flag && self.x.wrapping_add(7) >= self.window_x {
                         // We start rendering the window
                         // We flush the entire state and signal that we start to render the window
-                        state.cycle = 0;
-                        state.tile_idx = 0;
-                        state.fetcher_x = 0;
-                        state.buffer = Default::default();
-                        state.pixel_fetcher = Default::default();
+                        state.reset();
 
                         state.is_window = true;
+                        state.fetcher_x = 0;
+
+                        self.background_pixel_pipeline.empty();
+                    }
+                }
+
+                // Check for sprites
+                if !state.is_sprite && self.lcd_control_reg.contains(LcdControl::OBJ_ENABLE) {
+                    // This condition is only for when on DMG!
+                    for (index, sprite) in self.secondary_oam.chunks_exact(4).enumerate() {
+                        let sprite = <&[u8; 4]>::try_from(sprite)
+                            .expect("secondary OAM should always be chunks of 4");
+
+                        // The sprite address is x + 8, so it can be hidden if set at 0
+                        let x_remainder = self.x.wrapping_sub(sprite[1]).wrapping_add(8);
+                        if x_remainder < 8 {
+                            // Start a sprite fetch
+                            state.reset();
+
+                            state.is_sprite = true;
+                            state.sprite_idx = (index << 2) as u8;
+
+                            break;
+                        }
                     }
                 }
 
@@ -407,218 +442,159 @@ impl Ppu {
                         // Here we use a specific fetcher indexing
                         // https://gbdev.io/pandocs/pixel_fifo.html
                         if state.cycle == 0 {
-                            state.tile_idx = if !state.is_window {
+                            state.tile_idx = if state.is_sprite {
+                                // For sprites, we simply fetch it from the OAM entry
+                                self.secondary_oam[(state.sprite_idx + 2) as usize]
+                            } else if state.is_window {
+                                // For window, we use the internal window Y counter and the X fetch counter
+                                let x_index = (state.fetcher_x) & 0x1F;
+                                let y_index = self.window_y_counter >> 3;
+                                let tile_map_idx =
+                                    ((y_index as u16) << 5) | (x_index as u16 & 0x1F);
+
+                                self.read_win_tile_index(tile_map_idx)
+                            } else {
+                                // For background, we use the scanline number as Y and the X fetch counter
                                 let x_index = ((self.scroll_x >> 3) + (state.fetcher_x)) & 0x1F;
                                 let y_index = self.y.wrapping_add(self.scroll_y) >> 3;
                                 let tile_map_idx = ((y_index as u16) << 5) | (x_index as u16);
 
                                 self.read_bg_tile_index(tile_map_idx)
-                            } else {
-                                let x_index =
-                                    (state.fetcher_x.wrapping_sub(self.window_x >> 3)) & 0x1F;
-                                let y_index = self.y.wrapping_sub(self.window_y) >> 3;
-
-                                let tile_map_idx =
-                                    ((y_index as u16) << 5) | (x_index as u16 & 0x1F);
-                                self.read_win_tile_index(tile_map_idx)
                             };
 
                             state.cycle += 1;
                         } else {
-                            state.pixel_fetcher = PixelFetcherState::GetTileLow;
-                            state.cycle = 0;
+                            state.advance_fetcher_state()
                         }
                     }
                     PixelFetcherState::GetTileLow => {
-                        // Get the low bits of the used palette
                         if state.cycle == 0 {
-                            let row = if state.is_window {
-                                self.y.wrapping_add(self.window_y) & 0x7
-                            } else {
-                                self.y.wrapping_add(self.scroll_y) & 0x7
-                            };
-
-                            let mut tile_data = self.read_bg_win_tile(state.tile_idx, row << 1);
-
-                            // Put the tile data where it belongs in the buffer
                             state.buffer = [0u16; 8];
-                            for val in &mut state.buffer {
-                                *val |= tile_data as u16 & 1;
-                                tile_data >>= 1;
-                            }
-
-                            state.cycle += 1;
+                            self.fetcher_get_tile(state, false)
                         } else {
-                            state.pixel_fetcher = PixelFetcherState::GetTileHigh;
-                            state.cycle = 0;
+                            state.advance_fetcher_state()
                         }
                     }
                     PixelFetcherState::GetTileHigh => {
-                        // Get the low bits of the used palette
                         if state.cycle == 0 {
-                            let row = if state.is_window {
-                                self.y.wrapping_add(self.window_y) & 0x7
-                            } else {
-                                self.y.wrapping_add(self.scroll_y) & 0x7
-                            };
-
-                            let mut tile_data =
-                                self.read_bg_win_tile(state.tile_idx, (row << 1) | 1);
-
-                            // Put the tile data where it belongs in the buffer
-                            for val in &mut state.buffer {
-                                *val |= (tile_data as u16 & 1) << 1;
-                                tile_data >>= 1;
-                            }
-
-                            state.cycle += 1;
+                            self.fetcher_get_tile(state, true)
                         } else {
-                            state.pixel_fetcher = PixelFetcherState::Sleep;
-                            state.cycle = 0;
-                        }
-                    }
-                    PixelFetcherState::Sleep => {
-                        // Do nothing for 2 cycles
-                        state.cycle += 1;
-                        if self.cycle >= 2 {
-                            state.pixel_fetcher = PixelFetcherState::Push;
-                            state.cycle = 0;
+                            state.advance_fetcher_state()
                         }
                     }
                     PixelFetcherState::Push => {
-                        if self.background_pixel_pipeline.is_empty() {
-                            // Hang until pipeline is empty to load it
-                            self.background_pixel_pipeline.load(state.buffer);
-
-                            if !state.is_window {
-                                for _ in 0..(self.scroll_x.wrapping_add(self.x)) & 0x7 {
-                                    // Drain the extra pixels
-                                    let _ = self.background_pixel_pipeline.pop();
-                                }
-                            }
-
-                            state.pixel_fetcher = PixelFetcherState::GetTile;
-                            state.fetcher_x += 1;
-                        }
-                    }
-                }
-
-                // Load sprites into the pipeline
-                if self.sprite_pixel_pipeline.is_empty() {
-                    // Iterate the sprite and load a line
-                    for sprite in self.secondary_oam.chunks_exact(4) {
-                        let sprite = <&[u8; 4]>::try_from(sprite)
-                            .expect("secondary OAM should always be chunks of 4");
-
-                        // The sprite address is x + 8, so it can be hidden if set at 0
-                        let x_remainder = self.x.wrapping_sub(sprite[1]).wrapping_add(8);
-
-                        if x_remainder < 8 {
-                            let mut buffer = [0u16; 8];
-
-                            let sprite_size = if self.lcd_control_reg.contains(LcdControl::OBJ_SIZE)
-                            {
-                                15
-                            } else {
-                                7
-                            };
-
-                            let mut fine_y =
-                                self.y.wrapping_sub(sprite[0]).wrapping_add(16) & sprite_size;
-
-                            // Y flip
-                            if sprite[3] & 0x40 > 0 {
-                                fine_y = sprite_size - fine_y;
-                            }
-
-                            let mut lo = self.read_obj_tile(sprite[2], fine_y << 1);
-                            let mut hi = self.read_obj_tile(sprite[2], (fine_y << 1) | 1);
-
+                        if state.is_sprite {
+                            let sprite_properties =
+                                self.secondary_oam[(state.sprite_idx + 3) as usize];
                             // X flip
-                            if sprite[3] & 0x20 > 0 {
-                                lo = lo.reverse_bits();
-                                hi = hi.reverse_bits();
+                            if sprite_properties & 0x20 > 0 {
+                                state.buffer.reverse();
                             }
 
-                            for val in &mut buffer {
-                                *val |= lo as u16 & 1;
-                                *val |= (hi as u16 & 1) << 1;
-
-                                // Palettes and priority
-                                *val |= (sprite[3] & 0x90) as u16;
-
-                                lo >>= 1;
-                                hi >>= 1;
+                            // Add palette and priority bits
+                            for b in &mut state.buffer {
+                                *b |= (sprite_properties & 0x90) as u16;
                             }
 
-                            self.sprite_pixel_pipeline.load(buffer);
+                            self.sprite_pixel_pipeline.load(state.buffer);
 
-                            for _ in 0..x_remainder {
-                                // Drain the extra pixels
-                                let _ = self.sprite_pixel_pipeline.pop();
+                            if self.x == 0 {
+                                self.sprite_pixel_pipeline
+                                    .drain(8 - self.secondary_oam[(state.sprite_idx + 1) as usize]);
                             }
-                            break;
+
+                            state.is_sprite = false;
+
+                            // Remove the sprite
+                            self.secondary_oam[(state.sprite_idx + 1) as usize] = 0;
+                        } else {
+                            if self.background_pixel_pipeline.is_empty() {
+                                // Hang until pipeline is empty to load it
+                                self.background_pixel_pipeline.load(state.buffer);
+
+                                if !state.is_window {
+                                    self.background_pixel_pipeline
+                                        .drain((self.scroll_x.wrapping_add(self.x)) & 0x7);
+                                } else {
+                                    if self.x == 0 {
+                                        self.background_pixel_pipeline
+                                            .drain(7u8.wrapping_sub(self.window_x) & 0x7);
+                                    }
+                                }
+
+                                state.fetcher_x += 1;
+                            }
                         }
+
+                        state.advance_fetcher_state()
                     }
                 }
 
                 // Rendering...
-                match self.background_pixel_pipeline.pop() {
-                    Some(pixel) => {
-                        let base = ((self.y as usize) * FRAME_WIDTH + (self.x as usize)) * 4;
-                        if base + 3 < self.frame.len() {
-                            // Check for sprite pixels...
-                            let pixel = if let Some(sprite_pixel) = self.sprite_pixel_pipeline.pop()
-                            {
-                                let palette = (sprite_pixel as usize & 0x10) >> 4;
-                                let bg_over_obj = (sprite_pixel & 0x80) == 0x80;
+                if !self.background_pixel_pipeline.is_empty() & !state.is_sprite {
+                    let background_pixel = self.background_pixel_pipeline.pop();
+                    let sprite_pixel = self.sprite_pixel_pipeline.pop();
 
-                                if sprite_pixel & 3 == 0 || (bg_over_obj && (pixel & 3 != 0)) {
-                                    // Pixel is transparent or under the background. Rendering background instead
-                                    // Index the pixel in the palette
-                                    (self.greyscale_bg_palette >> ((pixel as u8 & 0x3) << 1)) & 0x3
-                                } else {
-                                    // Renderng the sprite pixel
-                                    // Index the pixel in the palette
-                                    (self.greyscale_obj_palette[palette]
-                                        >> ((sprite_pixel as u8 & 0x3) << 1))
-                                        & 0x3
-                                }
-                            } else {
-                                // No sprite, rendering the background
-                                // Index the pixel in the palette
-                                (self.greyscale_bg_palette >> ((pixel as u8 & 0x3) << 1)) & 0x3
-                            };
+                    let sprite_palette = (sprite_pixel as usize & 0x10) >> 4;
+                    let bg_over_obj = (sprite_pixel & 0x80) == 0x80;
 
-                            // Convert to RGBA
-                            let greyscale = !(pixel as u8 & 3) << 6;
-                            self.frame[base] = greyscale;
-                            self.frame[base + 1] = greyscale;
-                            self.frame[base + 2] = greyscale;
-                            self.frame[base + 3] = greyscale;
-
-                            self.x += 1;
-
-                            if self.x >= FRAME_WIDTH as u8 {
-                                // We enter HBlank here
-
-                                // Reset some buffers
-                                self.background_pixel_pipeline = Default::default();
-                                self.sprite_pixel_pipeline = Default::default();
-                                self.secondary_oam = [0u8; 40];
-
-                                fifo_mode = FifoMode::HBlank;
-
-                                if self
-                                    .lcd_status_reg
-                                    .contains(LcdStatus::HBANLK_INTERUPT_SOURCE)
-                                {
-                                    bus.request_interrupt(InterruptReg::LCD_STAT);
-                                }
-                            };
+                    let pixel = if (sprite_pixel & 3 == 0)
+                        || (bg_over_obj && (background_pixel & 3 != 0))
+                    {
+                        // Pixel is transparent or under the background. Rendering background instead
+                        // Index the pixel in the palette
+                        if self
+                            .lcd_control_reg
+                            .contains(LcdControl::BACKGROUND_WINDOW_ENABLE_PRIORITY)
+                        {
+                            (self.greyscale_bg_palette >> ((background_pixel as u8 & 0x3) << 1))
+                                & 0x3
+                        } else {
+                            // Very simple and potentially incomplete implementation of LCDC.0 for DMG. For CGB, there should be more to do as well.
+                            // 0 here means white
+                            0
                         }
+                    } else {
+                        // Renderng the sprite pixel
+                        // Index the pixel in the palette
+                        (self.greyscale_obj_palette[sprite_palette]
+                            >> ((sprite_pixel as u8 & 0x3) << 1))
+                            & 0x3
+                    };
+
+                    let base = ((self.y as usize) * FRAME_WIDTH + (self.x as usize)) * 4;
+                    if base + 3 < self.frame.len() {
+                        // Convert to RGBA
+                        let greyscale = !(pixel as u8 & 3) << 6;
+                        self.frame[base..base + 3].fill(greyscale);
+
+                        // Alpha channel
+                        self.frame[base + 3] = 0xff;
+
+                        self.x += 1;
+
+                        if self.x >= FRAME_WIDTH as u8 {
+                            // We enter HBlank here
+
+                            // Reset some buffers
+                            self.background_pixel_pipeline = Default::default();
+                            self.sprite_pixel_pipeline = Default::default();
+                            self.secondary_oam = [0u8; 40];
+
+                            if state.is_window {
+                                self.window_y_counter += 1;
+                            };
+
+                            fifo_mode = FifoMode::HBlank;
+
+                            if self
+                                .lcd_status_reg
+                                .contains(LcdStatus::HBANLK_INTERUPT_SOURCE)
+                            {
+                                bus.request_interrupt(InterruptReg::LCD_STAT);
+                            }
+                        };
                     }
-                    None => {}
                 }
             }
             _ => {
@@ -681,6 +657,57 @@ impl Ppu {
             self.read_vram_unblocked(addr)
         }
     }
+
+    fn fetcher_get_tile(&self, state: &mut DrawingState, hi: bool) {
+        // Decides if we load the lower or higher bits
+        let plane = if hi { 1 } else { 0 };
+
+        let mut tile_data = if state.is_sprite {
+            let sprite_size = if self.lcd_control_reg.contains(LcdControl::OBJ_SIZE) {
+                15
+            } else {
+                7
+            };
+
+            let mut row = self
+                .y
+                .wrapping_sub(self.secondary_oam[state.sprite_idx as usize])
+                .wrapping_add(16)
+                & sprite_size;
+
+            // Y flip
+            if self.secondary_oam[(state.sprite_idx + 3) as usize] & 0x40 > 0 {
+                row = sprite_size - row;
+            }
+
+            // For 8x16 sprites, get the right index
+            let tile_id = if self.lcd_control_reg.contains(LcdControl::OBJ_SIZE) {
+                (state.tile_idx & 0xFE) | ((row & 0x08) >> 3)
+            } else {
+                state.tile_idx
+            };
+
+            self.read_obj_tile(tile_id, (row << 1) | plane)
+        } else {
+            let row = if state.is_window {
+                // For sprite, we select using the internal window Y counter
+                self.window_y_counter & 0x7
+            } else {
+                // For background, we select using the scanline number as Y
+                self.y.wrapping_add(self.scroll_y) & 0x7
+            };
+
+            self.read_bg_win_tile(state.tile_idx, (row << 1) | plane)
+        };
+
+        // Put the tile data where it belongs in the buffer
+        for val in &mut state.buffer {
+            *val |= (tile_data as u16 & 1) << plane;
+            tile_data >>= 1;
+        }
+
+        state.cycle += 1;
+    }
 }
 
 fn allocate_new_frame() -> Frame {
@@ -690,7 +717,7 @@ fn allocate_new_frame() -> Frame {
     unsafe {
         // Safety: allocated vector has the right size for a frame array
         // (that is `FRAME_WIDTH * FRAME_HEIGHT`)
-        let v: Vec<u8> = vec![0u8; FRAME_WIDTH * FRAME_HEIGHT * 4];
+        let v: Vec<u8> = vec![0xFF; FRAME_WIDTH * FRAME_HEIGHT * 4];
         Box::from_raw(
             Box::into_raw(v.into_boxed_slice()) as *mut [u8; FRAME_WIDTH * FRAME_HEIGHT * 4]
         )

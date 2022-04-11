@@ -132,7 +132,7 @@ pub fn start(
         breakpoints: Vec::new(),
 
         input_receiver,
-        loop_helper
+        loop_helper,
     };
 
     let join_handle = std::thread::spawn(move || emulator_state.run());

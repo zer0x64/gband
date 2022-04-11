@@ -9,20 +9,39 @@ impl PixelFifo {
         self.n_pixels == 0
     }
 
-    pub fn pop(&mut self) -> Option<u16> {
+    pub fn empty(&mut self) {
+        self.n_pixels = 0;
+        self.fifo = Default::default();
+    }
+
+    pub fn drain(&mut self, n_pixels: u8) {
+        for _ in 0..n_pixels {
+            // Drain the extra pixels
+            let _ = self.pop();
+        }
+    }
+
+    pub fn pop(&mut self) -> u16 {
         if self.n_pixels == 0 {
-            None
+            self.fifo[7]
         } else {
             let res = self.fifo[7];
             self.fifo.rotate_right(1);
+            self.fifo[0] = 0;
             self.n_pixels -= 1;
 
-            Some(res)
+            res
         }
     }
 
     pub fn load(&mut self, value: [u16; 8]) {
-        self.fifo = value;
+        for i in 0..8 {
+            // Only overwrite transparent pixels
+            if self.fifo[i] & 3 == 0 {
+                self.fifo[i] = value[i];
+            }
+        }
+
         self.n_pixels = 8;
     }
 }
