@@ -503,6 +503,15 @@ fn main() {
         .start()
         .unwrap();
 
+    let icon = image::load_from_memory_with_format(
+        include_bytes!("../../logos/gband-small-1-transparent.png"),
+        image::ImageFormat::Png,
+    )
+    .expect("invalid icon file!");
+    let icon =
+        winit::window::Icon::from_rgba(icon.to_rgba8().to_vec(), icon.width(), icon.height())
+            .expect("invalid icon!");
+
     // Create the window
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -511,6 +520,7 @@ fn main() {
             gband::FRAME_WIDTH as f32 * 4.0,
             gband::FRAME_HEIGHT as f32 * 4.0,
         ))
+        .with_window_icon(Some(icon))
         .build(&event_loop)
         .unwrap();
 
