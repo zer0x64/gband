@@ -5,6 +5,7 @@ use crate::InterruptReg;
 use crate::InterruptState;
 use crate::JoypadState;
 use crate::Ppu;
+use crate::SerialPort;
 use crate::TimerRegisters;
 use crate::WRAM_BANK_SIZE;
 
@@ -21,9 +22,9 @@ macro_rules! borrow_cpu_bus {
             &mut $owner.timer_registers,
             &mut $owner.cartridge,
             &mut $owner.ppu,
+            &mut $owner.serial_port,
             &$owner.joypad_state,
             &mut $owner.joypad_register,
-            &mut $owner.serial_port_buffer,
         )
     }};
 }
@@ -37,9 +38,9 @@ pub struct CpuBus<'a> {
     timer_registers: &'a mut TimerRegisters,
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
+    serial_port: &'a mut SerialPort,
     joypad_state: &'a JoypadState,
     joypad_register: &'a mut u8,
-    serial_port_buffer: &'a mut alloc::vec::Vec<u8>,
 }
 
 impl<'a> CpuBus<'a> {
@@ -53,9 +54,9 @@ impl<'a> CpuBus<'a> {
         timer_registers: &'a mut TimerRegisters,
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
+        serial_port: &'a mut SerialPort,
         joypad_state: &'a JoypadState,
         joypad_register: &'a mut u8,
-        serial_port_buffer: &'a mut alloc::vec::Vec<u8>,
     ) -> Self {
         Self {
             wram,
@@ -66,9 +67,9 @@ impl<'a> CpuBus<'a> {
             timer_registers,
             cartridge,
             ppu,
+            serial_port,
             joypad_state,
             joypad_register,
-            serial_port_buffer,
         }
     }
 }
@@ -134,23 +135,11 @@ impl CpuBus<'_> {
             }
             0xFF01 => {
                 // Serial transfer data (SB)
-                if data == 10u8 {
-                    if !self.serial_port_buffer.is_empty() {
-                        log::info!(
-                            "Serial port: {}",
-                            self.serial_port_buffer
-                                .iter()
-                                .flat_map(|c| (*c as char).escape_default())
-                                .collect::<alloc::string::String>()
-                        );
-                        self.serial_port_buffer.clear();
-                    }
-                } else {
-                    self.serial_port_buffer.push(data);
-                }
+                self.serial_port.set_buffer(data);
             }
             0xFF02 => {
                 // Serial transfer control (SC)
+                self.serial_port.set_control(data);
             }
             0xFF04..=0xFF07 => self.timer_registers.write(addr, data),
             0xFF0F => self.interrupts.status = InterruptReg::from_bits_truncate(0xE0 | data),
@@ -203,11 +192,11 @@ impl CpuBus<'_> {
             }
             0xFF01 => {
                 // Serial transfer data (SB)
-                0
+                self.serial_port.get_buffer()
             }
             0xFF02 => {
                 // Serial transfer control (SC)
-                0x7E
+                self.serial_port.get_control()
             }
             0xFF04..=0xFF07 => self.timer_registers.read(addr),
             0xFF0F => self.interrupts.status.bits(),
@@ -307,6 +296,10 @@ impl CpuBus<'_> {
 
     pub fn get_timer_registers(&mut self) -> &mut TimerRegisters {
         self.timer_registers
+    }
+
+    pub fn get_serial_port(&mut self) -> &mut SerialPort {
+        self.serial_port
     }
 
     pub fn request_interrupt(&mut self, interrupt: InterruptReg) {

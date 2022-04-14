@@ -72,6 +72,10 @@ impl Cpu {
             bus.request_interrupt(InterruptReg::TIMER);
         }
 
+        if bus.get_serial_port().clock() {
+            bus.request_interrupt(InterruptReg::SERIAL);
+        }
+
         // Fetch/Execute overlap, last cycle of execute runs at the same time as the next fetch
         if !self.halted && self.cycles != 0 {
             self.execute(bus);
@@ -818,6 +822,7 @@ mod tests {
     use crate::OamDma;
     use crate::Ppu;
     use crate::RomParserError;
+    use crate::SerialPort;
     use crate::TimerRegisters;
     use crate::WRAM_BANK_SIZE;
     use alloc::vec;
@@ -831,10 +836,10 @@ mod tests {
         pub double_speed: CgbDoubleSpeed,
         pub oam_dma: OamDma,
         pub timer_registers: TimerRegisters,
+        pub serial_port: SerialPort,
         pub joypad_state: JoypadState,
         pub joypad_register: u8,
         pub ppu: Ppu,
-        pub serial_port_buffer: alloc::vec::Vec<u8>,
     }
 
     impl MockEmulator {
@@ -852,10 +857,10 @@ mod tests {
                 double_speed: Default::default(),
                 oam_dma: Default::default(),
                 timer_registers: Default::default(),
+                serial_port: Default::default(),
                 joypad_state: Default::default(),
                 joypad_register: 0,
                 ppu: Default::default(),
-                serial_port_buffer: alloc::vec::Vec::with_capacity(256),
             };
 
             Ok(emulator)
