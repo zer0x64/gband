@@ -503,11 +503,14 @@ fn main() {
         .start()
         .unwrap();
 
-    let icon = image::load_from_memory_with_format(
-        include_bytes!("../../logos/gband-small-1-transparent.png"),
-        image::ImageFormat::Png,
-    )
-    .expect("invalid icon file!");
+    let icon: &[u8] = if opt.server.is_some() || opt.client.is_some() {
+        include_bytes!("../../logos/gband-small-2-transparent.png")
+    } else {
+        include_bytes!("../../logos/gband-small-1-transparent.png")
+    };
+
+    let icon = image::load_from_memory_with_format(icon, image::ImageFormat::Png)
+        .expect("invalid icon file!");
     let icon =
         winit::window::Icon::from_rgba(icon.to_rgba8().to_vec(), icon.width(), icon.height())
             .expect("invalid icon!");
