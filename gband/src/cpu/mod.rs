@@ -831,6 +831,7 @@ mod tests {
         pub cartridge: Cartridge,
         pub cpu: Cpu,
         pub wram: [u8; WRAM_BANK_SIZE as usize * 8],
+        pub wram_bank: u8,
         pub hram: [u8; 0x7F],
         pub interrupts: InterruptState,
         pub double_speed: CgbDoubleSpeed,
@@ -840,6 +841,7 @@ mod tests {
         pub joypad_state: JoypadState,
         pub joypad_register: u8,
         pub ppu: Ppu,
+        pub cgb_mode: bool,
     }
 
     impl MockEmulator {
@@ -852,6 +854,7 @@ mod tests {
                 cartridge,
                 cpu: Default::default(),
                 wram: [0u8; WRAM_BANK_SIZE as usize * 8],
+                wram_bank: 0xFF,
                 hram: [0u8; 0x7F],
                 interrupts: Default::default(),
                 double_speed: Default::default(),
@@ -861,6 +864,7 @@ mod tests {
                 joypad_state: Default::default(),
                 joypad_register: 0,
                 ppu: Default::default(),
+                cgb_mode: false,
             };
 
             Ok(emulator)

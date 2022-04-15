@@ -41,6 +41,8 @@ pub struct Emulator {
     // == CPU Related Hardware == //
     cpu: Cpu,
     wram: [u8; WRAM_BANK_SIZE as usize * 8],
+    wram_bank: u8,
+
     // 0x7F instead of 0x80 is not a mistake, as the last byte is used to access interupts
     hram: [u8; 0x7F],
     interrupts: InterruptState,
@@ -78,6 +80,7 @@ impl Emulator {
             timer_registers: Default::default(),
 
             wram: [0u8; WRAM_BANK_SIZE as usize * 8],
+            wram_bank: 0xFF,
             hram: [0u8; 0x7F],
             oam_dma: Default::default(),
 

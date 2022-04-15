@@ -9,6 +9,7 @@ struct MockEmulator {
     pub cartridge: Cartridge,
     pub cpu: Cpu,
     pub wram: [u8; 0x1000 as usize * 8],
+    pub wram_bank: u8,
     pub hram: [u8; 0x7F],
     pub interrupts: InterruptState,
     pub double_speed: CgbDoubleSpeed,
@@ -18,6 +19,7 @@ struct MockEmulator {
     pub joypad_state: JoypadState,
     pub joypad_register: u8,
     pub ppu: Ppu,
+    pub cgb_mode: bool,
 }
 
 impl MockEmulator {
@@ -30,6 +32,7 @@ impl MockEmulator {
             cartridge,
             cpu: Default::default(),
             wram: [0u8; 0x1000 as usize * 8],
+            wram_bank: 0xFF,
             hram: [0u8; 0x7F],
             interrupts: Default::default(),
             double_speed: Default::default(),
@@ -39,6 +42,7 @@ impl MockEmulator {
             joypad_state: Default::default(),
             joypad_register: 0,
             ppu: Default::default(),
+            cgb_mode: false,
         };
 
         Ok(emulator)

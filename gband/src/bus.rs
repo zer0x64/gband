@@ -15,6 +15,7 @@ macro_rules! borrow_cpu_bus {
     ($owner:ident) => {{
         $crate::bus::CpuBus::borrow(
             &mut $owner.wram,
+            &mut $owner.wram_bank,
             &mut $owner.hram,
             &mut $owner.interrupts,
             &mut $owner.double_speed,
@@ -22,6 +23,7 @@ macro_rules! borrow_cpu_bus {
             &mut $owner.timer_registers,
             &mut $owner.cartridge,
             &mut $owner.ppu,
+            &mut $owner.cgb_mode,
             &mut $owner.serial_port,
             &$owner.joypad_state,
             &mut $owner.joypad_register,
@@ -31,6 +33,7 @@ macro_rules! borrow_cpu_bus {
 
 pub struct CpuBus<'a> {
     wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
+    wram_bank: &'a mut u8,
     hram: &'a mut [u8; 0x7F],
     interrupts: &'a mut InterruptState,
     double_speed: &'a mut CgbDoubleSpeed,
@@ -38,6 +41,7 @@ pub struct CpuBus<'a> {
     timer_registers: &'a mut TimerRegisters,
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
+    cgb_mode: &'a mut bool,
     serial_port: &'a mut SerialPort,
     joypad_state: &'a JoypadState,
     joypad_register: &'a mut u8,
@@ -47,6 +51,7 @@ impl<'a> CpuBus<'a> {
     #[allow(clippy::too_many_arguments)] // it's fine, it's used by a macro
     pub fn borrow(
         wram: &'a mut [u8; WRAM_BANK_SIZE as usize * 8],
+        wram_bank: &'a mut u8,
         hram: &'a mut [u8; 0x7F],
         interrupts: &'a mut InterruptState,
         double_speed: &'a mut CgbDoubleSpeed,
@@ -54,12 +59,14 @@ impl<'a> CpuBus<'a> {
         timer_registers: &'a mut TimerRegisters,
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
+        cgb_mode: &'a mut bool,
         serial_port: &'a mut SerialPort,
         joypad_state: &'a JoypadState,
         joypad_register: &'a mut u8,
     ) -> Self {
         Self {
             wram,
+            wram_bank,
             hram,
             interrupts,
             double_speed,
@@ -67,6 +74,7 @@ impl<'a> CpuBus<'a> {
             timer_registers,
             cartridge,
             ppu,
+            cgb_mode,
             serial_port,
             joypad_state,
             joypad_register,
@@ -156,6 +164,7 @@ impl CpuBus<'_> {
                 self.double_speed
                     .set(CgbDoubleSpeed::PENDING, (data & 1) != 0)
             }
+            0xFF70 => *self.wram_bank = data,
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
             0xFFFF => self.interrupts.enable = InterruptReg::from_bits_truncate(data),
             _ => {
@@ -212,6 +221,7 @@ impl CpuBus<'_> {
                 // KEY1
                 self.double_speed.bits()
             }
+            0xFF70 => *self.wram_bank,
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize],
             0xFFFF => self.interrupts.enable.bits(),
             _ => {
@@ -222,15 +232,47 @@ impl CpuBus<'_> {
     }
 
     pub fn write_ram(&mut self, addr: u16, data: u8) {
-        // TODO: Bank switching
-        // For now, allow access to the first 2 banks, which are classic GB banks (not switchable)
-        self.wram[(addr & (WRAM_BANK_SIZE * 2 - 1)) as usize] = data;
+        // In CGB mode, there is WRAM bank switching
+        if *self.cgb_mode {
+            let bank = if addr & WRAM_BANK_SIZE > 0 {
+                // This is the bank location
+                match *self.wram_bank & 7 {
+                    0 => 1,
+                    x => x,
+                }
+            } else {
+                0
+            };
+
+            let addr = addr & (WRAM_BANK_SIZE - 1);
+            let bank = (bank as u16) << 12;
+
+            self.wram[(bank | addr) as usize] = data;
+        } else {
+            self.wram[(addr & (WRAM_BANK_SIZE * 2 - 1)) as usize] = data;
+        }
     }
 
     pub fn read_ram(&self, addr: u16) -> u8 {
-        // TODO: Bank switching
-        // For now, allow access to the first 2 banks, which are classic GB banks (not switchable)
-        self.wram[(addr & (WRAM_BANK_SIZE * 2 - 1)) as usize]
+        // In CGB mode, there is WRAM bank switching
+        if *self.cgb_mode {
+            let bank = if addr & WRAM_BANK_SIZE > 0 {
+                // This is the bank location
+                match *self.wram_bank & 7 {
+                    0 => 1,
+                    x => x,
+                }
+            } else {
+                0
+            };
+
+            let addr = addr & (WRAM_BANK_SIZE - 1);
+            let bank = (bank as u16) << 12;
+
+            self.wram[(bank | addr) as usize]
+        } else {
+            self.wram[(addr & (WRAM_BANK_SIZE * 2 - 1)) as usize]
+        }
     }
 
     pub fn write_cartridge(&mut self, addr: u16, data: u8) {
