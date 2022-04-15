@@ -504,7 +504,7 @@ fn main() {
         .unwrap();
 
     let icon: &[u8] = if opt.server.is_some() || opt.client.is_some() {
-        include_bytes!("../../logos/gband-small-2-transparent.png")
+        include_bytes!("../../logos/gband-small-3-transparent.png")
     } else {
         include_bytes!("../../logos/gband-small-1-transparent.png")
     };
