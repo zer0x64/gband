@@ -79,7 +79,7 @@ impl Emulator {
             hram: [0u8; 0x7F],
             oam_dma: Default::default(),
 
-            ppu: Ppu::new(),
+            ppu: Ppu::new(cgb_mode),
             cgb_mode,
 
             serial_port: Default::default(),

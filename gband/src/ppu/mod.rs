@@ -27,6 +27,8 @@ pub const FRAME_HEIGHT: usize = 144;
 pub type Frame = Box<[u8; FRAME_WIDTH * FRAME_HEIGHT * 4]>;
 
 pub struct Ppu {
+    cgb_mode: bool,
+
     x: u8,
     y: u8,
     window_y_counter: u8,
@@ -64,6 +66,8 @@ pub struct Ppu {
 impl Default for Ppu {
     fn default() -> Self {
         Self {
+            cgb_mode: false,
+
             x: 0,
             y: 0,
             window_y_counter: 0,
@@ -77,7 +81,7 @@ impl Default for Ppu {
             scroll_y: 0,
 
             vram: [0u8; 0x4000],
-            vram_bank_register: false,
+            vram_bank_register: true,
             oam: [0u8; 0xa0],
             secondary_oam: [0u8; 40],
 
@@ -108,8 +112,11 @@ impl Default for Ppu {
 }
 
 impl Ppu {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(cgb_mode: bool) -> Self {
+        Self {
+            cgb_mode,
+            ..Default::default()
+        }
     }
 
     pub fn clock(&mut self, bus: &mut PpuBus) {
@@ -205,11 +212,11 @@ impl Ppu {
                 // Do nothing
                 // TODO: There are timing issues right now so the write block breaks rendering right now.
                 // Delete those lines when the timing issues are fixed
-                let addr = addr & 0x1FFF | if self.vram_bank_register { 0x2000 } else { 0 };
+                let addr = addr & 0x1FFF | self.get_current_vram_bank();
                 self.vram[addr as usize] = data;
             }
             _ => {
-                let addr = addr & 0x1FFF | if self.vram_bank_register { 0x2000 } else { 0 };
+                let addr = addr & 0x1FFF | self.get_current_vram_bank();
                 self.vram[addr as usize] = data;
             }
         }
@@ -227,7 +234,7 @@ impl Ppu {
     }
 
     fn read_vram_unblocked(&self, addr: u16) -> u8 {
-        let addr = addr & 0x1FFF | if self.vram_bank_register { 0x2000 } else { 0 };
+        let addr = addr & 0x1FFF | self.get_current_vram_bank();
         self.vram[addr as usize]
     }
 
@@ -286,6 +293,7 @@ impl Ppu {
             0xFF4C => {
                 // rKEY0 is blocked after boot
             }
+            0xFF4F => self.vram_bank_register = data & 1 > 0,
             0xFF68 => self.cgb_bg_palette.write_spec(data),
             0xFF69 => self.cgb_bg_palette.write_data(data, self.fifo_mode),
             0xFF6A => self.cgb_obj_palette.write_spec(data),
@@ -311,6 +319,10 @@ impl Ppu {
             0xFF4C => {
                 // rKEY0 is blocked after boot
                 0xFF
+            }
+            0xFF4F => {
+                let bank_bit = if self.vram_bank_register { 1 } else { 0 };
+                0xFF & !bank_bit
             }
             0xFF68 => self.cgb_bg_palette.read_spec(),
             0xFF69 => self.cgb_bg_palette.read_data(self.fifo_mode),
@@ -655,6 +667,14 @@ impl Ppu {
         } else {
             let addr = 0x9800 | id;
             self.read_vram_unblocked(addr)
+        }
+    }
+
+    fn get_current_vram_bank(&self) -> u16 {
+        if self.cgb_mode && self.vram_bank_register {
+            0x2000
+        } else {
+            0
         }
     }
 
