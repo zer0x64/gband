@@ -65,7 +65,7 @@ pub enum RamBanks {
 #[derive(Clone, Debug)]
 pub struct Header {
     pub logo: [u8; 0x30],
-    pub title: [u8; 11],
+    pub title: [u8; 16],
     pub manufacturer_code: [u8; 4],
     pub cgb_flag: CgbFlag,
     pub licensee_code: [u8; 2],
@@ -91,8 +91,8 @@ impl TryFrom<&[u8]> for Header {
         let mut logo = [0u8; 0x30];
         logo.copy_from_slice(&data[0x04..0x34]);
 
-        let mut title = [0u8; 11];
-        title.copy_from_slice(&data[0x34..0x3f]);
+        let mut title = [0u8; 16];
+        title.copy_from_slice(&data[0x34..0x44]);
 
         let mut manufacturer_code = [0u8; 4];
         manufacturer_code.copy_from_slice(&data[0x3f..0x43]);

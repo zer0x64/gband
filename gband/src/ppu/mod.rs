@@ -1,3 +1,5 @@
+use core::num::Wrapping;
+
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -7,6 +9,7 @@ mod fifo_mode;
 mod lcd_control;
 mod lcd_status;
 mod pixel_fifo;
+mod palette_table;
 
 use cgb_palette::CgbPalette;
 use fifo_mode::FifoMode;
@@ -49,8 +52,11 @@ pub struct Ppu {
     cgb_bg_palette: CgbPalette,
     cgb_obj_palette: CgbPalette,
 
-    greyscale_bg_palette: u8,
-    greyscale_obj_palette: [u8; 2],
+    dmg_bg_palette: u8,
+    dmg_obj_palette: [u8; 2],
+
+    dmg_colorized_bg_palette: [[u8; 3]; 4],
+    dmg_colorized_obj_palette: [[[u8; 3]; 4]; 2],
 
     lcd_control_reg: LcdControl,
     lcd_status_reg: LcdStatus,
@@ -98,8 +104,11 @@ impl Default for Ppu {
                 ..Default::default()
             },
 
-            greyscale_bg_palette: 0,
-            greyscale_obj_palette: [0; 2],
+            dmg_bg_palette: 0,
+            dmg_obj_palette: [0; 2],
+
+            dmg_colorized_bg_palette: Default::default(),
+            dmg_colorized_obj_palette: Default::default(),
 
             background_pixel_pipeline: Default::default(),
             sprite_pixel_pipeline: Default::default(),
@@ -117,6 +126,16 @@ impl Ppu {
             cgb_mode,
             ..Default::default()
         }
+    }
+
+    pub fn set_dmg_colorized_palette(&mut self, title: &[u8; 16]) {
+        let hash: Wrapping<u8> = title.iter().map(|x| Wrapping(*x)).sum();
+
+        let palettes = palette_table::palette_fill_from_hash(hash.0, title[3]);
+
+        self.dmg_colorized_bg_palette = palettes[0];
+        self.dmg_colorized_obj_palette[0] = palettes[1];
+        self.dmg_colorized_obj_palette[1] = palettes[2];
     }
 
     pub fn clock(&mut self, bus: &mut PpuBus) {
@@ -286,8 +305,8 @@ impl Ppu {
                 // ly is Read-Only
             }
             0xFF45 => self.y_compare = data,
-            0xFF47 => self.greyscale_bg_palette = data,
-            0xFF48 | 0xFF49 => self.greyscale_obj_palette[(addr & 1) as usize] = data,
+            0xFF47 => self.dmg_bg_palette = data,
+            0xFF48 | 0xFF49 => self.dmg_obj_palette[(addr & 1) as usize] = data,
             0xFF4A => self.window_y = data,
             0xFF4B => self.window_x = data,
             0xFF4C => {
@@ -312,8 +331,8 @@ impl Ppu {
             0xFF43 => self.scroll_x,
             0xFF44 => self.y,
             0xFF45 => self.y_compare,
-            0xFF47 => self.greyscale_bg_palette,
-            0xFF48 | 0xFF49 => self.greyscale_obj_palette[(addr & 1) as usize],
+            0xFF47 => self.dmg_bg_palette,
+            0xFF48 | 0xFF49 => self.dmg_obj_palette[(addr & 1) as usize],
             0xFF4A => self.window_y,
             0xFF4B => self.window_x,
             0xFF4C => {
@@ -559,26 +578,26 @@ impl Ppu {
                             .lcd_control_reg
                             .contains(LcdControl::BACKGROUND_WINDOW_ENABLE_PRIORITY)
                         {
-                            (self.greyscale_bg_palette >> ((background_pixel as u8 & 0x3) << 1))
-                                & 0x3
+                            let index = (self.dmg_bg_palette >> ((background_pixel as u8 & 0x3) << 1)) & 0x3;
+                            &self.dmg_colorized_bg_palette[index as usize]
                         } else {
                             // Very simple and potentially incomplete implementation of LCDC.0 for DMG. For CGB, there should be more to do as well.
                             // 0 here means white
-                            0
+                            &[0xFF, 0xFF, 0xFF]
                         }
                     } else {
                         // Renderng the sprite pixel
                         // Index the pixel in the palette
-                        (self.greyscale_obj_palette[sprite_palette]
+                        let index = (self.dmg_obj_palette[sprite_palette]
                             >> ((sprite_pixel as u8 & 0x3) << 1))
-                            & 0x3
+                            & 0x3;
+
+                        &self.dmg_colorized_obj_palette[sprite_palette][index as usize]
                     };
 
                     let base = ((self.y as usize) * FRAME_WIDTH + (self.x as usize)) * 4;
                     if base + 3 < self.frame.len() {
-                        // Convert to RGBA
-                        let greyscale = !(pixel as u8 & 3) << 6;
-                        self.frame[base..base + 3].fill(greyscale);
+                        self.frame[base..base + 3].copy_from_slice(pixel);
 
                         // Alpha channel
                         self.frame[base + 3] = 0xff;
