@@ -65,6 +65,7 @@ pub struct Ppu {
     sprite_pixel_pipeline: PixelFifo,
 
     cycle: u16,
+    paused_cycles: u32,
     fifo_mode: FifoMode,
     frame: Frame,
 }
@@ -114,6 +115,7 @@ impl Default for Ppu {
             sprite_pixel_pipeline: Default::default(),
 
             cycle: 0,
+            paused_cycles: 0,
             fifo_mode: Default::default(),
             frame: allocate_new_frame(),
         }
@@ -139,6 +141,16 @@ impl Ppu {
     }
 
     pub fn clock(&mut self, bus: &mut PpuBus) {
+        if !self.lcd_control_reg.contains(LcdControl::LCD_PPU_ENABLE) {
+            // Continue cycling to push frames
+            self.paused_cycles += 1;
+            if self.paused_cycles >= 70224 {
+                self.paused_cycles = 0;
+            }
+            // PPU is disabled, only make sure to return frames
+            return;
+        }
+
         self.cycle += 1;
 
         if self.y < 144 {
@@ -150,7 +162,7 @@ impl Ppu {
             }
         }
 
-        if self.cycle == 456 {
+        if self.cycle >= 456 {
             self.cycle = 0;
             self.x = 0;
             self.y += 1;
@@ -206,13 +218,17 @@ impl Ppu {
             };
         };
 
-        if self.lcd_control_reg.contains(LcdControl::LCD_PPU_ENABLE) {
-            self.render(bus);
-        }
+        self.render(bus);
     }
 
     pub fn ready_frame(&mut self) -> Option<Frame> {
-        if self.y == 0 && self.cycle == 0 {
+        let is_ready = if self.lcd_control_reg.contains(LcdControl::LCD_PPU_ENABLE) {
+            self.y == 0 && self.cycle == 0
+        } else {
+            self.paused_cycles == 0
+        };
+
+        if is_ready {
             let new_frame = allocate_new_frame();
 
             // Replace current frame with the newly allocated one
