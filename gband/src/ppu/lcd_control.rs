@@ -1,7 +1,6 @@
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
     pub struct LcdControl: u8 {
         const BACKGROUND_WINDOW_ENABLE_PRIORITY = 0x01;
         const OBJ_ENABLE = 0x02;
@@ -11,5 +10,11 @@ bitflags! {
         const WINDOW_ENABLE = 0x20;
         const WINDOW_TILE_MAP_AREA = 0x40;
         const LCD_PPU_ENABLE = 0x80;
+    }
+}
+
+impl Default for LcdControl {
+    fn default() -> Self {
+        Self { bits: 0x91 }
     }
 }
