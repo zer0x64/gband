@@ -3,11 +3,12 @@ authors = ["zer0x64 <dugre.philippe@hotmail.com>"]
 edition = "2021"
 name = "gband-wgpu"
 version = "0.1.0"
+
 [dependencies]
 bitflags = "1.2.1"
 flexi_logger = "0.17.1"
 futures = "0.3.15"
-image = "*"
+image = "0.24"
 log = "0.4"
 native-dialog = "0.5.5"
 spin_sleep = "1.1.1"

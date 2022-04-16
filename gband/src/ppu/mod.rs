@@ -8,8 +8,8 @@ mod cgb_palette;
 mod fifo_mode;
 mod lcd_control;
 mod lcd_status;
-mod pixel_fifo;
 mod palette_table;
+mod pixel_fifo;
 
 use cgb_palette::CgbPalette;
 use fifo_mode::FifoMode;
@@ -594,7 +594,9 @@ impl Ppu {
                             .lcd_control_reg
                             .contains(LcdControl::BACKGROUND_WINDOW_ENABLE_PRIORITY)
                         {
-                            let index = (self.dmg_bg_palette >> ((background_pixel as u8 & 0x3) << 1)) & 0x3;
+                            let index = (self.dmg_bg_palette
+                                >> ((background_pixel as u8 & 0x3) << 1))
+                                & 0x3;
                             &self.dmg_colorized_bg_palette[index as usize]
                         } else {
                             // Very simple and potentially incomplete implementation of LCDC.0 for DMG. For CGB, there should be more to do as well.
