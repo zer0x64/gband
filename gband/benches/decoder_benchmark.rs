@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gband::{
-    borrow_cpu_bus, Cartridge, CgbDoubleSpeed, Cpu, InterruptState, JoypadState, OamDma, Ppu,
+    borrow_cpu_bus, Cartridge, CgbDoubleSpeed, Cpu, HDma, InterruptState, JoypadState, OamDma, Ppu,
     RomParserError, SerialPort, TimerRegisters,
 };
 use std::time::Duration;
@@ -14,6 +14,7 @@ struct MockEmulator {
     pub interrupts: InterruptState,
     pub double_speed: CgbDoubleSpeed,
     pub oam_dma: OamDma,
+    pub hdma: HDma,
     pub timer_registers: TimerRegisters,
     pub serial_port: SerialPort,
     pub joypad_state: JoypadState,
@@ -37,6 +38,7 @@ impl MockEmulator {
             interrupts: Default::default(),
             double_speed: Default::default(),
             oam_dma: Default::default(),
+            hdma: Default::default(),
             timer_registers: Default::default(),
             serial_port: Default::default(),
             joypad_state: Default::default(),

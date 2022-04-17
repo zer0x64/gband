@@ -1,4 +1,4 @@
-use crate::oam_dma::OamDma;
+use crate::dma::*;
 use crate::Cartridge;
 use crate::CgbDoubleSpeed;
 use crate::InterruptReg;
@@ -20,6 +20,7 @@ macro_rules! borrow_cpu_bus {
             &mut $owner.interrupts,
             &mut $owner.double_speed,
             &mut $owner.oam_dma,
+            &mut $owner.hdma,
             &mut $owner.timer_registers,
             &mut $owner.cartridge,
             &mut $owner.ppu,
@@ -38,6 +39,7 @@ pub struct CpuBus<'a> {
     interrupts: &'a mut InterruptState,
     double_speed: &'a mut CgbDoubleSpeed,
     oam_dma: &'a mut OamDma,
+    hdma: &'a mut HDma,
     timer_registers: &'a mut TimerRegisters,
     cartridge: &'a mut Cartridge,
     ppu: &'a mut Ppu,
@@ -56,6 +58,7 @@ impl<'a> CpuBus<'a> {
         interrupts: &'a mut InterruptState,
         double_speed: &'a mut CgbDoubleSpeed,
         oam_dma: &'a mut OamDma,
+        hdma: &'a mut HDma,
         timer_registers: &'a mut TimerRegisters,
         cartridge: &'a mut Cartridge,
         ppu: &'a mut Ppu,
@@ -71,6 +74,7 @@ impl<'a> CpuBus<'a> {
             interrupts,
             double_speed,
             oam_dma,
+            hdma,
             timer_registers,
             cartridge,
             ppu,
@@ -155,7 +159,7 @@ impl CpuBus<'_> {
                 // OAM DMA
                 self.request_oam_dma(data)
             }
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF6F => {
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF50 | 0xFF56..=0xFF6F => {
                 // PPU control reg
                 self.ppu.write(addr, data)
             }
@@ -163,6 +167,10 @@ impl CpuBus<'_> {
                 // KEY1
                 self.double_speed
                     .set(CgbDoubleSpeed::PENDING, (data & 1) != 0)
+            }
+            0xFF51..=0xFF55 => {
+                // HDMA
+                self.write_hdma(addr, data)
             }
             0xFF70 => *self.wram_bank = data,
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize] = data,
@@ -213,13 +221,17 @@ impl CpuBus<'_> {
                 // OAM DMA
                 self.read_oam_dma()
             }
-            0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF6F => {
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF50 | 0xFF56..=0xFF6F => {
                 // PPU control reg
                 self.ppu.read(addr)
             }
             0xFF4D => {
                 // KEY1
                 self.double_speed.bits()
+            }
+            0xFF51..=0xFF55 => {
+                // HDMA
+                self.read_hdma(addr)
             }
             0xFF70 => *self.wram_bank,
             0xFF80..=0xFFFE => self.hram[(addr - 0xFF80) as usize],
@@ -283,6 +295,56 @@ impl CpuBus<'_> {
         self.cartridge.read(addr)
     }
 
+    fn write_hdma(&mut self, addr: u16, data: u8) {
+        match addr {
+            0xFF51 => {
+                self.hdma.source = (self.hdma.source & 0xFF) | ((data as u16) << 8);
+            }
+            0xFF52 => {
+                self.hdma.source = (self.hdma.source & 0xFF00) | (data as u16);
+            }
+            0xFF53 => {
+                self.hdma.destination = (self.hdma.destination & 0xFF) | ((data as u16) << 8);
+            }
+            0xFF54 => {
+                self.hdma.destination = (self.hdma.destination & 0xFF00) | (data as u16);
+            }
+            0xFF55 => {
+                let mode = data & 0x80 == 0x80;
+
+                // Check if HDMA is already active
+                if self.hdma.control & 0x80 == 0 {
+                    // HDMA is already active
+                    if mode {
+                        // Stop DMA
+                        self.hdma.control |= 0x80;
+
+                        self.hdma.reset();
+                    }
+                } else {
+                    // HDMA is not active, start it
+                    self.hdma.reset();
+
+                    let length = data & 0x7F;
+                    self.hdma.hblank_mode = mode;
+                    self.hdma.control = length;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn read_hdma(&self, addr: u16) -> u8 {
+        match addr {
+            0xFF51 => (self.hdma.source >> 8) as u8,
+            0xFF52 => (self.hdma.source & 0xFF) as u8,
+            0xFF53 => (self.hdma.destination >> 8) as u8,
+            0xFF54 => (self.hdma.destination & 0xFF) as u8,
+            0xFF55 => self.hdma.control,
+            _ => 0xFF,
+        }
+    }
+
     pub fn write_joypad_reg(&mut self, data: u8) {
         let state: u8 = (*self.joypad_state).bits();
 
@@ -332,8 +394,24 @@ impl CpuBus<'_> {
         self.oam_dma.clone()
     }
 
+    pub fn get_hdma(&self) -> HDma {
+        self.hdma.clone()
+    }
+
+    pub fn get_cgb_mode(&self) -> bool {
+        *self.cgb_mode
+    }
+
+    pub fn get_double_speed_mode(&self) -> CgbDoubleSpeed {
+        *self.double_speed
+    }
+
     pub fn set_oam_dma(&mut self, oam_dma: OamDma) {
         *self.oam_dma = oam_dma;
+    }
+
+    pub fn set_hdma(&mut self, hdma: HDma) {
+        *self.hdma = hdma
     }
 
     pub fn get_timer_registers(&mut self) -> &mut TimerRegisters {
@@ -365,18 +443,19 @@ impl CpuBus<'_> {
 #[macro_export]
 macro_rules! borrow_ppu_bus {
     ($owner:ident) => {{
-        $crate::bus::PpuBus::borrow(&mut $owner.interrupts)
+        $crate::bus::PpuBus::borrow(&mut $owner.interrupts, &mut $owner.hdma)
     }};
 }
 
 pub struct PpuBus<'a> {
     interrupts: &'a mut InterruptState,
+    hdma: &'a mut HDma,
 }
 
 impl<'a> PpuBus<'a> {
     #[allow(clippy::too_many_arguments)] // it's fine, it's used by a macro
-    pub fn borrow(interrupts: &'a mut InterruptState) -> Self {
-        Self { interrupts }
+    pub fn borrow(interrupts: &'a mut InterruptState, hdma: &'a mut HDma) -> Self {
+        Self { interrupts, hdma }
     }
 }
 
@@ -391,5 +470,16 @@ impl PpuBus<'_> {
 
     pub fn request_interrupt(&mut self, interrupt: InterruptReg) {
         self.interrupts.status.insert(interrupt)
+    }
+
+    pub fn set_hdma_hblank(&mut self, value: bool) {
+        if value {
+            // Only set the latch if HDMA is in progress and in HBLANK mode.
+            if self.hdma.hblank_mode && self.hdma.control & 0x80 == 0 {
+                self.hdma.hblank_latch = true;
+            }
+        } else {
+            self.hdma.hblank_latch = false;
+        }
     }
 }

@@ -8,9 +8,9 @@ pub mod bus; // TODO: Revert pub added for criterion
 mod cartridge;
 mod cgb_double_speed;
 mod cpu;
+mod dma;
 mod interrupt;
 mod joypad_state;
-mod oam_dma;
 mod ppu;
 mod rgb_palette;
 mod serial;
@@ -28,7 +28,7 @@ pub use serial_transport::*;
 
 // TODO: Revert pub added for criterion
 pub use cartridge::Cartridge;
-pub use oam_dma::OamDma;
+pub use dma::*;
 pub use serial::SerialPort;
 pub use timer_regs::TimerRegisters;
 
@@ -48,6 +48,7 @@ pub struct Emulator {
     interrupts: InterruptState,
     double_speed: CgbDoubleSpeed,
     oam_dma: OamDma,
+    hdma: HDma,
     timer_registers: TimerRegisters,
 
     // == PPU Related Hardware == //
@@ -83,6 +84,7 @@ impl Emulator {
             wram_bank: 0xFF,
             hram: [0u8; 0x7F],
             oam_dma: Default::default(),
+            hdma: Default::default(),
 
             ppu,
             cgb_mode,

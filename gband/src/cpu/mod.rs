@@ -2,7 +2,7 @@ mod decoder;
 
 use bitflags::bitflags;
 
-use crate::{bus::CpuBus, InterruptReg, OamDma};
+use crate::{bus::CpuBus, CgbDoubleSpeed, InterruptReg, OamDma};
 use decoder::{
     Alu, Condition, OpMemAddress16, OpMemAddress8, Opcode, OpcodeCB, Register, RegisterPair, Rot,
 };
@@ -65,7 +65,10 @@ impl Default for Cpu {
 
 impl Cpu {
     pub fn clock(&mut self, bus: &mut CpuBus) {
-        self.handle_oam_dma(bus);
+        if self.handle_dma(bus) {
+            // CPU is hanged while executing HDMA
+            return;
+        };
 
         // TODO: Don't clock if the CPU is STOPped
         if bus.get_timer_registers().clock() {
@@ -779,7 +782,7 @@ impl Cpu {
         }
     }
 
-    fn handle_oam_dma(&mut self, bus: &mut CpuBus) {
+    fn handle_dma(&mut self, bus: &mut CpuBus) -> bool {
         // OAM DMA
         let mut oam_dma = bus.get_oam_dma();
         let (is_oam_dma, reset_oam_dma) = match &mut oam_dma {
@@ -809,6 +812,75 @@ impl Cpu {
             // Update the value
             bus.set_oam_dma(oam_dma);
         }
+
+        if bus.get_cgb_mode() {
+            let mut hdma = bus.get_hdma();
+            let mut is_hdma_changed = false;
+
+            let hang = if hdma.control & 0x80 == 0 {
+                // HDMA is active
+                if !hdma.hblank_mode || hdma.hblank_latch {
+                    // We are in HDMA
+
+                    // Check for double speed mode
+                    let n_writes = if bus
+                        .get_double_speed_mode()
+                        .contains(CgbDoubleSpeed::ENABLED)
+                    {
+                        1
+                    } else {
+                        // Align cycle to avoid desync
+                        hdma.cycle &= 0xFE;
+                        2
+                    };
+
+                    for _ in 0..n_writes {
+                        let source = (hdma.source) & 0xFFF0;
+
+                        // Map inside the VRAM address range
+                        let destination = ((hdma.destination) & 0x1FF0) | 0x8000;
+
+                        let data = match source {
+                            0x0000..=0x7FF0 | 0xA000..=0xDFF0 => {
+                                bus.read(source | (hdma.cycle as u16))
+                            }
+                            _ => 0xFF,
+                        };
+
+                        bus.write(destination | (hdma.cycle as u16), data);
+
+                        hdma.cycle += 1;
+
+                        if hdma.cycle >= 0x10 {
+                            hdma.cycle = 0;
+                            hdma.source = hdma.source.wrapping_add(0x10);
+                            hdma.destination = hdma.destination.wrapping_add(0x10);
+                            hdma.control = hdma.control.wrapping_sub(1);
+                            hdma.hblank_latch = false;
+                        };
+                    }
+
+                    // HDMA has been modified, will need to write to it
+                    is_hdma_changed = true;
+                    true
+                } else {
+                    // HDMA in HBLANK mode, but we are not in HBLANK. Don't hang
+                    false
+                }
+            } else {
+                // HDMA is not active, don't hang
+                false
+            };
+
+            if is_hdma_changed {
+                bus.set_hdma(hdma);
+            };
+
+            hang
+        } else {
+            // HDMA is not supported, don't hang
+            false
+        }
     }
 }
 
@@ -817,6 +889,7 @@ mod tests {
     use super::*;
     use crate::Cartridge;
     use crate::CgbDoubleSpeed;
+    use crate::HDma;
     use crate::InterruptState;
     use crate::JoypadState;
     use crate::OamDma;
@@ -836,6 +909,7 @@ mod tests {
         pub interrupts: InterruptState,
         pub double_speed: CgbDoubleSpeed,
         pub oam_dma: OamDma,
+        pub hdma: HDma,
         pub timer_registers: TimerRegisters,
         pub serial_port: SerialPort,
         pub joypad_state: JoypadState,
@@ -859,6 +933,7 @@ mod tests {
                 interrupts: Default::default(),
                 double_speed: Default::default(),
                 oam_dma: Default::default(),
+                hdma: Default::default(),
                 timer_registers: Default::default(),
                 serial_port: Default::default(),
                 joypad_state: Default::default(),
