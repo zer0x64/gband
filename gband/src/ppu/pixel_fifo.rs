@@ -34,10 +34,11 @@ impl PixelFifo {
         }
     }
 
-    pub fn load(&mut self, value: [u16; 8]) {
+    pub fn load(&mut self, value: [u16; 8], cgb_mode: bool) {
         for i in 0..8 {
             // Only overwrite transparent pixels
-            if self.fifo[i] & 3 == 0 {
+            if self.fifo[i] & 0x300 == 0 || (cgb_mode && self.fifo[i] & 0xff00 > value[i] & 0xff00)
+            {
                 self.fifo[i] = value[i];
             }
         }

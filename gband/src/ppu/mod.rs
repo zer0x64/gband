@@ -276,7 +276,12 @@ impl Ppu {
         self.vram[addr as usize]
     }
 
-    pub fn write_oam(&mut self, addr: u16, data: u8, force: bool) {
+    fn read_vram_without_banking(&self, addr: u16) -> u8 {
+        let addr = addr & 0x3FFF;
+        self.vram[addr as usize]
+    }
+
+    pub fn write_oam(&mut self, addr: u16, data: u8, _force: bool) {
         // TODO: Redo write block
         // match self.fifo_mode {
         //     FifoMode::OamScan { .. } | FifoMode::Drawing(_) => {
@@ -295,7 +300,7 @@ impl Ppu {
         self.oam[addr as usize] = data;
     }
 
-    pub fn read_oam(&self, addr: u16, force: bool) -> u8 {
+    pub fn read_oam(&self, addr: u16, _force: bool) -> u8 {
         // TODO: Redo read block
         // match self.fifo_mode {
         //     FifoMode::OamScan(_) | FifoMode::Drawing(_) => {
@@ -492,9 +497,12 @@ impl Ppu {
                         // Here we use a specific fetcher indexing
                         // https://gbdev.io/pandocs/pixel_fifo.html
                         if state.cycle == 0 {
-                            state.tile_idx = if state.is_sprite {
+                            (state.tile_idx, state.tile_attr) = if state.is_sprite {
                                 // For sprites, we simply fetch it from the OAM entry
-                                self.secondary_oam[(state.sprite_idx + 2) as usize]
+                                (
+                                    self.secondary_oam[(state.sprite_idx + 2) as usize],
+                                    self.secondary_oam[(state.sprite_idx + 3) as usize],
+                                )
                             } else if state.is_window {
                                 // For window, we use the internal window Y counter and the X fetch counter
                                 let x_index = (state.fetcher_x) & 0x1F;
@@ -502,14 +510,28 @@ impl Ppu {
                                 let tile_map_idx =
                                     ((y_index as u16) << 5) | (x_index as u16 & 0x1F);
 
-                                self.read_win_tile_index(tile_map_idx)
+                                let idx = self.read_win_tile_index(tile_map_idx);
+                                let attr = if self.cgb_mode {
+                                    self.read_win_tile_attributes(tile_map_idx)
+                                } else {
+                                    0
+                                };
+
+                                (idx, attr)
                             } else {
                                 // For background, we use the scanline number as Y and the X fetch counter
                                 let x_index = ((self.scroll_x >> 3) + (state.fetcher_x)) & 0x1F;
                                 let y_index = self.y.wrapping_add(self.scroll_y) >> 3;
                                 let tile_map_idx = ((y_index as u16) << 5) | (x_index as u16);
 
-                                self.read_bg_tile_index(tile_map_idx)
+                                let idx = self.read_bg_tile_index(tile_map_idx);
+                                let attr = if self.cgb_mode {
+                                    self.read_bg_tile_attributes(tile_map_idx)
+                                } else {
+                                    0
+                                };
+
+                                (idx, attr)
                             };
 
                             state.cycle += 1;
@@ -533,20 +555,23 @@ impl Ppu {
                         }
                     }
                     PixelFetcherState::Push => {
+                        // X flip
+                        if state.tile_attr & 0x20 > 0 {
+                            state.buffer.reverse();
+                        }
+
+                        // Add palette and priority bits
+                        for b in &mut state.buffer {
+                            *b |= state.tile_attr as u16;
+                        }
+
                         if state.is_sprite {
-                            let sprite_properties =
-                                self.secondary_oam[(state.sprite_idx + 3) as usize];
-                            // X flip
-                            if sprite_properties & 0x20 > 0 {
-                                state.buffer.reverse();
-                            }
-
-                            // Add palette and priority bits
+                            // Add sprite index
                             for b in &mut state.buffer {
-                                *b |= (sprite_properties & 0x90) as u16;
+                                *b |= (state.sprite_idx as u16) << 12;
                             }
 
-                            self.sprite_pixel_pipeline.load(state.buffer);
+                            self.sprite_pixel_pipeline.load(state.buffer, self.cgb_mode);
 
                             if self.x == 0 {
                                 self.sprite_pixel_pipeline
@@ -560,7 +585,7 @@ impl Ppu {
                         } else {
                             if self.background_pixel_pipeline.is_empty() {
                                 // Hang until pipeline is empty to load it
-                                self.background_pixel_pipeline.load(state.buffer);
+                                self.background_pixel_pipeline.load(state.buffer, false);
 
                                 if !state.is_window {
                                     self.background_pixel_pipeline
@@ -586,39 +611,73 @@ impl Ppu {
                     let sprite_pixel = self.sprite_pixel_pipeline.pop();
 
                     let sprite_palette = (sprite_pixel as usize & 0x10) >> 4;
-                    let bg_over_obj = (sprite_pixel & 0x80) == 0x80;
 
-                    let pixel = if (sprite_pixel & 3 == 0)
-                        || (bg_over_obj && (background_pixel & 3 != 0))
-                    {
-                        // Pixel is transparent or under the background. Rendering background instead
-                        // Index the pixel in the palette
-                        if self
+                    let background_priority = if self.cgb_mode {
+                        if !self
                             .lcd_control_reg
                             .contains(LcdControl::BACKGROUND_WINDOW_ENABLE_PRIORITY)
                         {
-                            let index = (self.dmg_bg_palette
-                                >> ((background_pixel as u8 & 0x3) << 1))
-                                & 0x3;
-                            &self.dmg_colorized_bg_palette[index as usize]
+                            // If LCDC.0 is on, sprite always have priority
+                            false
+                        } else if (background_pixel & 0x80) == 0x80 {
+                            // If the background specifies priority, it has priority
+                            true
                         } else {
-                            // Very simple and potentially incomplete implementation of LCDC.0 for DMG. For CGB, there should be more to do as well.
-                            // 0 here means white
-                            &[0xFF, 0xFF, 0xFF]
+                            // Else, the priority is determined from the sprite attibutes
+                            (sprite_pixel & 0x80) == 0x80
                         }
                     } else {
-                        // Renderng the sprite pixel
-                        // Index the pixel in the palette
-                        let index = (self.dmg_obj_palette[sprite_palette]
-                            >> ((sprite_pixel as u8 & 0x3) << 1))
-                            & 0x3;
+                        (sprite_pixel & 0x80) == 0x80
+                    };
 
-                        &self.dmg_colorized_obj_palette[sprite_palette][index as usize]
+                    let pixel = if self.cgb_mode {
+                        if (sprite_pixel & 0x300 == 0)
+                            || (background_priority && (background_pixel & 0x300 != 0))
+                        {
+                            // Render the background pixel
+                            self.cgb_bg_palette.get_rgb(
+                                background_pixel as usize & 0x7,
+                                (background_pixel as usize >> 8) & 3,
+                            )
+                        } else {
+                            // Rendering the sprite pixel
+                            self.cgb_obj_palette.get_rgb(
+                                sprite_pixel as usize & 0x7,
+                                (sprite_pixel as usize >> 8) & 3,
+                            )
+                        }
+                    } else {
+                        if (sprite_pixel & 0x300 == 0)
+                            || (background_priority && (background_pixel & 0x300 != 0))
+                        {
+                            // Pixel is transparent or under the background. Rendering background instead
+                            // Index the pixel in the palette
+                            if self
+                                .lcd_control_reg
+                                .contains(LcdControl::BACKGROUND_WINDOW_ENABLE_PRIORITY)
+                            {
+                                let index = (self.dmg_bg_palette
+                                    >> (((background_pixel >> 8) as u8 & 3) << 1))
+                                    & 0x3;
+                                self.dmg_colorized_bg_palette[index as usize]
+                            } else {
+                                // Renders white if background rendering is disabled
+                                [0xFF, 0xFF, 0xFF]
+                            }
+                        } else {
+                            // Rendering the sprite pixel
+                            // Index the pixel in the palette
+                            let index = (self.dmg_obj_palette[sprite_palette]
+                                >> (((sprite_pixel >> 8) as u8 & 3) << 1))
+                                & 0x3;
+
+                            self.dmg_colorized_obj_palette[sprite_palette][index as usize]
+                        }
                     };
 
                     let base = ((self.y as usize) * FRAME_WIDTH + (self.x as usize)) * 4;
                     if base + 3 < self.frame.len() {
-                        self.frame[base..base + 3].copy_from_slice(pixel);
+                        self.frame[base..base + 3].copy_from_slice(&pixel);
 
                         // Alpha channel
                         self.frame[base + 3] = 0xff;
@@ -660,29 +719,33 @@ impl Ppu {
         self.fifo_mode = fifo_mode;
     }
 
-    fn read_bg_win_tile(&self, id: u8, offset: u8) -> u8 {
+    fn read_bg_win_tile(&self, bank: u8, id: u8, offset: u8) -> u8 {
         // See: https://gbdev.io/pandocs/Tile_Data.html
         if self
             .lcd_control_reg
             .contains(LcdControl::BACKGROUND_WINDOW_TILE_DATA_AREA)
         {
-            self.read_obj_tile(id, offset)
+            self.read_obj_tile(bank, id, offset)
         } else {
             let is_id_negative = id & 0x80 == 0x80;
 
             let addr_to_read = if !is_id_negative {
-                0x9000 | ((id as u16) << 4) | (offset as u16)
+                (0x9000 | ((id as u16) << 4) | (offset as u16)) & 0x1FFF | ((bank as u16) << 13)
             } else {
-                0x8800 | (((id as u16) << 4) & 0x7FF) | (offset as u16)
+                0x8800
+                    | (((id as u16) << 4) & 0x7FF)
+                    | (offset as u16) & 0x1FFF
+                    | ((bank as u16) << 13)
             };
-            self.read_vram_unblocked(addr_to_read)
+            self.read_vram_without_banking(addr_to_read)
         }
     }
 
-    fn read_obj_tile(&self, id: u8, offset: u8) -> u8 {
+    fn read_obj_tile(&self, bank: u8, id: u8, offset: u8) -> u8 {
         let base_addr = 0x8000;
-        let addr_to_read = base_addr | (u16::from(id) << 4) | offset as u16;
-        self.read_vram_unblocked(addr_to_read)
+        let addr_to_read =
+            base_addr | (u16::from(id) << 4) | offset as u16 & 0x1FFF | ((bank as u16) << 13);
+        self.read_vram_without_banking(addr_to_read)
     }
 
     fn read_bg_tile_index(&self, id: u16) -> u8 {
@@ -692,10 +755,10 @@ impl Ppu {
             .contains(LcdControl::BACKGROUND_TILE_MAP_AREA)
         {
             let addr = 0x9C00 | id;
-            self.read_vram_unblocked(addr)
+            self.read_vram_without_banking(addr)
         } else {
             let addr = 0x9800 | id;
-            self.read_vram_unblocked(addr)
+            self.read_vram_without_banking(addr)
         }
     }
 
@@ -706,10 +769,38 @@ impl Ppu {
             .contains(LcdControl::WINDOW_TILE_MAP_AREA)
         {
             let addr = 0x9C00 | id;
-            self.read_vram_unblocked(addr)
+            self.read_vram_without_banking(addr)
         } else {
             let addr = 0x9800 | id;
-            self.read_vram_unblocked(addr)
+            self.read_vram_without_banking(addr)
+        }
+    }
+
+    fn read_bg_tile_attributes(&self, id: u16) -> u8 {
+        // See: https://gbdev.io/pandocs/Tile_Maps.html
+        if self
+            .lcd_control_reg
+            .contains(LcdControl::BACKGROUND_TILE_MAP_AREA)
+        {
+            let addr = 0x9C00 | id & 0x1FFF | 0x2000;
+            self.read_vram_without_banking(addr)
+        } else {
+            let addr = 0x9800 | id & 0x1FFF | 0x2000;
+            self.read_vram_without_banking(addr)
+        }
+    }
+
+    fn read_win_tile_attributes(&self, id: u16) -> u8 {
+        // See: https://gbdev.io/pandocs/Tile_Maps.html
+        if self
+            .lcd_control_reg
+            .contains(LcdControl::WINDOW_TILE_MAP_AREA)
+        {
+            let addr = 0x9C00 | id & 0x1FFF | 0x2000;
+            self.read_vram_without_banking(addr)
+        } else {
+            let addr = 0x9800 | id & 0x1FFF | 0x2000;
+            self.read_vram_without_banking(addr)
         }
     }
 
@@ -724,6 +815,11 @@ impl Ppu {
     fn fetcher_get_tile(&self, state: &mut DrawingState, hi: bool) {
         // Decides if we load the lower or higher bits
         let plane = if hi { 1 } else { 0 };
+        let bank = if self.cgb_mode {
+            (state.tile_attr >> 3) & 1
+        } else {
+            0
+        };
 
         let mut tile_data = if state.is_sprite {
             let sprite_size = if self.lcd_control_reg.contains(LcdControl::OBJ_SIZE) {
@@ -739,7 +835,7 @@ impl Ppu {
                 & sprite_size;
 
             // Y flip
-            if self.secondary_oam[(state.sprite_idx + 3) as usize] & 0x40 > 0 {
+            if state.tile_attr & 0x40 > 0 {
                 row = sprite_size - row;
             }
 
@@ -750,9 +846,9 @@ impl Ppu {
                 state.tile_idx
             };
 
-            self.read_obj_tile(tile_id, (row << 1) | plane)
+            self.read_obj_tile(bank, tile_id, (row << 1) | plane)
         } else {
-            let row = if state.is_window {
+            let mut row = if state.is_window {
                 // For sprite, we select using the internal window Y counter
                 self.window_y_counter & 0x7
             } else {
@@ -760,12 +856,16 @@ impl Ppu {
                 self.y.wrapping_add(self.scroll_y) & 0x7
             };
 
-            self.read_bg_win_tile(state.tile_idx, (row << 1) | plane)
+            if state.tile_attr & 0x40 > 0 {
+                row = 7 - row;
+            }
+
+            self.read_bg_win_tile(bank, state.tile_idx, (row << 1) | plane)
         };
 
         // Put the tile data where it belongs in the buffer
         for val in &mut state.buffer {
-            *val |= (tile_data as u16 & 1) << plane;
+            *val |= (tile_data as u16 & 1) << (8 | plane);
             tile_data >>= 1;
         }
 

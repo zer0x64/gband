@@ -25,6 +25,7 @@ pub struct DrawingState {
     pub sprite_idx: u8,
 
     pub tile_idx: u8,
+    pub tile_attr: u8,
     pub buffer: [u16; 8],
 }
 
