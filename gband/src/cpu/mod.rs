@@ -817,58 +817,49 @@ impl Cpu {
             let mut hdma = bus.get_hdma();
             let mut is_hdma_changed = false;
 
-            let hang = if hdma.control & 0x80 == 0 {
-                // HDMA is active
-                if !hdma.hblank_mode || hdma.hblank_latch {
-                    // We are in HDMA
+            let hang = if hdma.is_currently_in_hdma() {
+                // We are in HDMA
 
-                    // Check for double speed mode
-                    let n_writes = if bus
-                        .get_double_speed_mode()
-                        .contains(CgbDoubleSpeed::ENABLED)
-                    {
-                        1
-                    } else {
-                        // Align cycle to avoid desync
-                        hdma.cycle &= 0xFE;
-                        2
+                // Check for double speed mode
+                let n_writes = if bus
+                    .get_double_speed_mode()
+                    .contains(CgbDoubleSpeed::ENABLED)
+                {
+                    1
+                } else {
+                    // Align cycle to avoid desync
+                    hdma.cycle &= 0xFE;
+                    2
+                };
+
+                for _ in 0..n_writes {
+                    let source = (hdma.source) & 0xFFF0;
+
+                    // Map inside the VRAM address range
+                    let destination = ((hdma.destination) & 0x1FF0) | 0x8000;
+
+                    let data = match source {
+                        0x0000..=0x7FF0 | 0xA000..=0xDFF0 => bus.read(source | (hdma.cycle as u16)),
+                        _ => 0xFF,
                     };
 
-                    for _ in 0..n_writes {
-                        let source = (hdma.source) & 0xFFF0;
+                    bus.write(destination | (hdma.cycle as u16), data);
 
-                        // Map inside the VRAM address range
-                        let destination = ((hdma.destination) & 0x1FF0) | 0x8000;
+                    hdma.cycle += 1;
 
-                        let data = match source {
-                            0x0000..=0x7FF0 | 0xA000..=0xDFF0 => {
-                                bus.read(source | (hdma.cycle as u16))
-                            }
-                            _ => 0xFF,
-                        };
-
-                        bus.write(destination | (hdma.cycle as u16), data);
-
-                        hdma.cycle += 1;
-
-                        if hdma.cycle >= 0x10 {
-                            hdma.cycle = 0;
-                            hdma.source = hdma.source.wrapping_add(0x10);
-                            hdma.destination = hdma.destination.wrapping_add(0x10);
-                            hdma.control = hdma.control.wrapping_sub(1);
-                            hdma.hblank_latch = false;
-                        };
-                    }
-
-                    // HDMA has been modified, will need to write to it
-                    is_hdma_changed = true;
-                    true
-                } else {
-                    // HDMA in HBLANK mode, but we are not in HBLANK. Don't hang
-                    false
+                    if hdma.cycle >= 0x10 {
+                        hdma.cycle = 0;
+                        hdma.source = hdma.source.wrapping_add(0x10);
+                        hdma.destination = hdma.destination.wrapping_add(0x10);
+                        hdma.control = hdma.control.wrapping_sub(1);
+                        hdma.hblank_latch = false;
+                    };
                 }
+
+                // HDMA has been modified, will need to write to it
+                is_hdma_changed = true;
+                true
             } else {
-                // HDMA is not active, don't hang
                 false
             };
 

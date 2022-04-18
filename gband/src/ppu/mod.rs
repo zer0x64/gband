@@ -12,7 +12,7 @@ mod palette_table;
 mod pixel_fifo;
 
 use cgb_palette::CgbPalette;
-use fifo_mode::FifoMode;
+pub(crate) use fifo_mode::FifoMode;
 use lcd_control::LcdControl;
 use lcd_status::LcdStatus;
 
@@ -269,6 +269,22 @@ impl Ppu {
             }
             _ => self.read_vram_unblocked(addr),
         }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.lcd_control_reg.contains(LcdControl::LCD_PPU_ENABLE)
+    }
+
+    pub fn get_mode(&self) -> &FifoMode {
+        &self.fifo_mode
+    }
+
+    pub fn disable(&mut self) {
+        self.cycle = 0;
+        self.window_y_flag;
+        self.x = 0;
+        self.y = 0;
+        self.y_compare = 0;
     }
 
     fn read_vram_unblocked(&self, addr: u16) -> u8 {

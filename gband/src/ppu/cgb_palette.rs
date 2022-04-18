@@ -9,7 +9,7 @@ pub struct CgbPalette {
 impl Default for CgbPalette {
     fn default() -> Self {
         CgbPalette {
-            data: [0u8; 0x40],
+            data: [0xFFu8; 0x40],
             autoincrement: false,
             index: 0,
         }

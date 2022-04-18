@@ -9,6 +9,8 @@ use crate::SerialPort;
 use crate::TimerRegisters;
 use crate::WRAM_BANK_SIZE;
 
+use crate::ppu::FifoMode;
+
 // TODO: Revert macro_export added for criterion
 #[macro_export]
 macro_rules! borrow_cpu_bus {
@@ -159,8 +161,25 @@ impl CpuBus<'_> {
                 // OAM DMA
                 self.request_oam_dma(data)
             }
+            0xFF40 => {
+                // LCD control reg
+                let was_enabled = self.ppu.is_enabled();
+                self.ppu.write(addr, data);
+                let is_enabled = self.ppu.is_enabled();
+
+                if was_enabled && !is_enabled {
+                    // The first 16 bytes of HDMA are copied when LCD is disabled
+                    if self.hdma.control & 0x80 == 0 && self.hdma.hblank_mode {
+                        if let &FifoMode::Drawing(_) = self.ppu.get_mode() {
+                            self.hdma.hblank_latch = true;
+                        };
+                    };
+
+                    self.ppu.disable();
+                };
+            }
             0xFF40..=0xFF45 | 0xFF47..=0xFF4C | 0xFF4E..=0xFF50 | 0xFF56..=0xFF6F => {
-                // PPU control reg
+                // PPU control regs
                 self.ppu.write(addr, data)
             }
             0xFF4D => {
@@ -217,6 +236,10 @@ impl CpuBus<'_> {
             }
             0xFF04..=0xFF07 => self.timer_registers.read(addr),
             0xFF0F => self.interrupts.status.bits(),
+            0xFF26 => {
+                // NR52, mock for now to make Zelda games work
+                0xFF
+            }
             0xFF46 => {
                 // OAM DMA
                 self.read_oam_dma()
@@ -238,7 +261,7 @@ impl CpuBus<'_> {
             0xFFFF => self.interrupts.enable.bits(),
             _ => {
                 // TODO: handle full memory map
-                0
+                0xFF
             }
         }
     }
@@ -310,24 +333,13 @@ impl CpuBus<'_> {
                 self.hdma.destination = (self.hdma.destination & 0xFF00) | (data as u16);
             }
             0xFF55 => {
-                let mode = data & 0x80 == 0x80;
-
                 // Check if HDMA is already active
-                if self.hdma.control & 0x80 == 0 {
-                    // HDMA is already active
-                    if mode {
-                        // Stop DMA
-                        self.hdma.control |= 0x80;
-
-                        self.hdma.reset();
-                    }
+                if self.hdma.is_active() && data & 0x80 == 0 {
+                    // HDMA is already active, stop it
+                    self.hdma.control |= 0x80;
                 } else {
                     // HDMA is not active, start it
-                    self.hdma.reset();
-
-                    let length = data & 0x7F;
-                    self.hdma.hblank_mode = mode;
-                    self.hdma.control = length;
+                    self.hdma.start(data)
                 }
             }
             _ => {}
