@@ -18,25 +18,38 @@ use winit::{
     window::WindowBuilder,
 };
 
+#[cfg(feature = "gilrs")]
+use gilrs::Gilrs;
+
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 struct Opt {
+    /// Path to the rom to load
     #[structopt(parse(from_os_str))]
     rom: Option<PathBuf>,
 
+    /// Starts the game paused. Can be useful for debugging
     #[structopt(short = "p", long)]
     start_paused: bool,
 
+    /// Level of information to be logged.
     #[structopt(default_value = "info", short, long)]
     log_level: String,
 
+    /// Open serial communication as a server on the specified bind address.
     #[structopt(short = "s", long, group = "serial")]
     server: Option<SocketAddr>,
 
+    /// Open serial communication as a client on the specified address.
     #[structopt(short = "c", long, group = "serial")]
     client: Option<SocketAddr>,
+
+    /// Disables gamepad support
+    #[structopt(long = "no-gamepad")]
+    #[cfg(feature = "gilrs")]
+    disable_gamepad: bool,
 }
 
 mod debugger;
@@ -55,6 +68,22 @@ fn winit_to_gband_input(keycode: &VirtualKeyCode) -> Result<JoypadState, ()> {
         VirtualKeyCode::Right => Ok(JoypadState::RIGHT),
         VirtualKeyCode::Up => Ok(JoypadState::UP),
         _ => Err(()),
+    }
+}
+
+#[cfg(feature = "gilrs")]
+// This maps an actual gamepad input to a controller input
+fn gilrs_to_gband_input(keycode: &gilrs::Button) -> Option<JoypadState> {
+    match keycode {
+        gilrs::Button::East => Some(JoypadState::A),
+        gilrs::Button::South => Some(JoypadState::B),
+        gilrs::Button::Start => Some(JoypadState::START),
+        gilrs::Button::Select => Some(JoypadState::SELECT),
+        gilrs::Button::DPadDown => Some(JoypadState::DOWN),
+        gilrs::Button::DPadLeft => Some(JoypadState::LEFT),
+        gilrs::Button::DPadRight => Some(JoypadState::RIGHT),
+        gilrs::Button::DPadUp => Some(JoypadState::UP),
+        _ => None,
     }
 }
 
@@ -91,6 +120,9 @@ struct State {
     emulator_input: Sender<EmulatorInput>,
     joypad: JoypadState,
 
+    #[cfg(feature = "gilrs")]
+    gamepad_events: Option<Gilrs>,
+
     thread_join_handles: Vec<JoinHandle<()>>,
 
     paused: Arc<AtomicBool>,
@@ -109,7 +141,12 @@ struct State {
 
 impl State {
     /// Create a new state and initialize the rendering pipeline.
-    async fn new(window: &winit::window::Window, emulator: Emulator, paused: bool) -> Self {
+    async fn new(
+        window: &winit::window::Window,
+        emulator: Emulator,
+        #[cfg(feature = "gilrs")] gamepad_events: Option<Gilrs>,
+        paused: bool,
+    ) -> Self {
         let size = window.inner_size();
 
         // Used prefered graphic API
@@ -329,6 +366,9 @@ impl State {
             emulator_input,
             thread_join_handles,
             joypad: JoypadState::default(),
+
+            #[cfg(feature = "gilrs")]
+            gamepad_events,
             paused,
 
             surface,
@@ -398,6 +438,38 @@ impl State {
         if self.paused.load(std::sync::atomic::Ordering::Relaxed) {
             // Put the debugger prompt if paused
             self.debugger_prompt()
+        } else {
+            #[cfg(feature = "gilrs")]
+            if let Some(gilrs) = &mut self.gamepad_events {
+                if let Some(gilrs::Event {
+                    id: _id,
+                    event,
+                    time: _time,
+                }) = gilrs.next_event()
+                {
+                    match event {
+                        gilrs::EventType::ButtonPressed(b, _) => {
+                            if let Some(input) = gilrs_to_gband_input(&b) {
+                                self.joypad.set(input, true);
+
+                                self.emulator_input
+                                    .send(EmulatorInput::Input(self.joypad))
+                                    .expect("Emulation thread crashed!");
+                            }
+                        }
+                        gilrs::EventType::ButtonReleased(b, _) => {
+                            if let Some(input) = gilrs_to_gband_input(&b) {
+                                self.joypad.set(input, false);
+
+                                self.emulator_input
+                                    .send(EmulatorInput::Input(self.joypad))
+                                    .expect("Emulation thread crashed!");
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
     }
 
@@ -569,8 +641,28 @@ fn main() {
 
     emulator.set_serial(serial_transport);
 
+    #[cfg(feature = "gilrs")]
+    // Setup Gamepad support
+    let gamepad_events = if !opt.disable_gamepad {
+        match Gilrs::new() {
+            Ok(g) => Some(g),
+            Err(e) => {
+                log::warn!("Couldn't initialize gamepad support: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Wait until WGPU is ready
-    let mut state = block_on(State::new(&window, emulator, opt.start_paused));
+    let mut state = block_on(State::new(
+        &window,
+        emulator,
+        #[cfg(feature = "gilrs")]
+        gamepad_events,
+        opt.start_paused,
+    ));
 
     // Handle window events
     event_loop.run(move |event, _, control_flow| match event {

@@ -23,3 +23,11 @@ version = "1.5.1"
 [dependencies.gband]
 features = ["debugger"]
 path = "../gband"
+
+[dependencies.gilrs]
+version = "0.8"
+optional = true
+
+[features]
+default = []
+gamepad = ["gilrs"]
