@@ -88,7 +88,7 @@ impl Default for Ppu {
             scroll_y: 0,
 
             vram: [0u8; 0x4000],
-            vram_bank_register: true,
+            vram_bank_register: false,
             oam: [0u8; 0xa0],
             secondary_oam: [0u8; 40],
 
@@ -285,6 +285,9 @@ impl Ppu {
         self.x = 0;
         self.y = 0;
         self.y_compare = 0;
+        self.fifo_mode = Default::default();
+        self.background_pixel_pipeline = Default::default();
+        self.sprite_pixel_pipeline = Default::default();
     }
 
     fn read_vram_unblocked(&self, addr: u16) -> u8 {
