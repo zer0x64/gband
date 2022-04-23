@@ -45,8 +45,8 @@ pub struct Event {
 pub struct InitialInputs(pub Vec<Event>);
 
 impl InitialInputs {
-    pub fn parse_str(ron_repr: &str) -> anyhow::Result<Self> {
-        let mut inputs: Self = ron::from_str(ron_repr)?;
+    pub fn parse_str(ron_repr: impl AsRef<str>) -> anyhow::Result<Self> {
+        let mut inputs: Self = ron::from_str(ron_repr.as_ref())?;
         inputs.0.sort_by(|a, b| a.frame.cmp(&b.frame));
         Ok(inputs)
     }

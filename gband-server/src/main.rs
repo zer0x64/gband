@@ -38,8 +38,8 @@ fn main() -> anyhow::Result<()> {
         .with_context(|| format!("Couldn't read save data {}", save_data_path.display()))?;
 
     let inputs = std::fs::read_to_string(&inputs_path)
-        .with_context(|| format!("Couldn't read initial inputs {}", inputs_path.display()))?;
-    let inputs = InitialInputs::parse_str(&inputs)
+        .with_context(|| format!("Couldn't read initial inputs {}", inputs_path.display()))?
+        .pipe(InitialInputs::parse_str)
         .context("Invalid initial inputs")?
         .pipe(Box::new)
         .pipe(Box::leak);
@@ -132,7 +132,7 @@ fn handle_client(stream: std::net::TcpStream, ctx: Ctx) -> anyhow::Result<()> {
     run_to_frame(&mut emulator);
     emulator.set_joypad(JoypadState::default());
 
-    // set the serial transport
+    // Set the serial transport
     let active = Arc::new(AtomicBool::new(true));
     let serial_transport = TcpSerialTransport::new(stream, active.clone());
     emulator.set_serial(Box::new(serial_transport));
