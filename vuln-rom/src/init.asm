@@ -1,4 +1,4 @@
-include "hardware.inc"
+include "constants.inc"
 SECTION FRAGMENT "INIT", ROMX
 
 Init::
@@ -41,6 +41,13 @@ Init::
 .cgbCheckComplete
 	ld [isCgb], a
 
+    ; Set the gamemode to the map by default (if the map is valid)
+    ; TODO: Uncomment this when done working with the menu
+    ;ld a, GAMESTATE_MAP
+    ld a, GAMESTATE_MENU
+
+    ld [gameState], a
+
     ; Validate and create save file
     ; Enable SRAM
     ld a, CART_SRAM_ENABLE
@@ -71,6 +78,10 @@ Init::
     ld hl, saveHeader.end
     ld bc, sramEnd - saveHeader.end
     call MemSet
+
+    ; Since we have a new save, set the game state to prompt for name and flag
+    ld a, GAMESTATE_MENU
+    ld [gameState], a
 
 .saveIsValid
 
@@ -211,44 +222,6 @@ InitCgb::
     ld a, (((asciiTileData.end - asciiTileData) >> 4) - 1) | HDMA5F_MODE_GP
     ld [rHDMA5], a
 
-    ; GDMA the tile map
-    ld a, HIGH(menuTileMap)
-    ld [rHDMA1], a
-    ld a, LOW(menuTileMap)
-    ld [rHDMA2], a
-
-    ld a, HIGH(_SCRN0)
-    ld [rHDMA3], a
-    ld a, LOW(_SCRN0)
-    ld [rHDMA4], a
-
-    ; Start GDMA
-    ld a, (((menuTileMap.end - menuTileMap) >> 4) - 1) | HDMA5F_MODE_GP
-    ld [rHDMA5], a
-
-    ; GDMA the attribute map
-    ; Change VRAM bank
-    ld a, 1
-    ld [rVBK], a
-
-    ld a, HIGH(menuAttributes)
-    ld [rHDMA1], a
-    ld a, LOW(menuAttributes)
-    ld [rHDMA2], a
-
-    ld a, HIGH(_SCRN0)
-    ld [rHDMA3], a
-    ld a, LOW(_SCRN0)
-    ld [rHDMA4], a
-
-    ; Start GDMA
-    ld a, (((menuAttributes.end - menuAttributes) >> 4) - 1) | HDMA5F_MODE_GP
-    ld [rHDMA5], a
-
-    ; Reset VRAM bank
-    ld a, 0
-    ld [rVBK], a
-
     ret
 
 InitDmg::
@@ -262,12 +235,6 @@ InitDmg::
     ld de, asciiTileData
     ld hl, _VRAM9000
     ld bc, asciiTileData.end - asciiTileData
-    call MemCpy
-
-    ; Copy the tile map
-    ld de, menuTileMap
-    ld hl, _SCRN0
-    ld bc, menuTileMap.end - menuTileMap
     call MemCpy
 
     ret
@@ -362,16 +329,8 @@ asciiTileData::
 INCBIN "res/ascii_tiles.bin"
 .end
 
-menuTileMap::
-INCBIN "res/menu_tilemap.bin"
-.end
-
 sgbBorderTileMap::
 INCBIN "res/sgb_border_tilemap.bin"
-.end
-
-menuAttributes::
-INCBIN "res/menu_attributes.bin"
 .end
 
 SECTION "OAM DMA Hram", HRAM

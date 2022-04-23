@@ -11,6 +11,10 @@ isCgb::
     DB
 isSgb::
     DB
+
+; Used to tell the game in which state it is.
+gameState::        
+    DB
 waitForFrame::
     DB
 oldBankNumber::

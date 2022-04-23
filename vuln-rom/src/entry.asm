@@ -1,7 +1,4 @@
-include "hardware.inc"
-
-; Those are the flags to set LCDC to
-LCDC_DEFAULT = LCDCF_BGON | LCDCF_OBJON | LCDCF_OBJ8 | LCDCF_BG9800 | LCDCF_BG8800 | LCDCF_WINOFF | LCDCF_WIN9C00 | LCDCF_ON
+include "constants.inc"
 
 SECTION "Entry point", ROM0
 
@@ -22,14 +19,29 @@ EntryPoint::
 
     call Init;
 
-    ; Start the game loop
-    ld a, BANK(GameLoop)    ;   Load in the bank of the init code
+.loop
+    ld a, [gameState]
+    cp GAMESTATE_MENU
+    jr z, .menu
+    cp GAMESTATE_MAP
+    jr z, .map
+    cp GAMESTATE_SERIAL
+    jr .serial
+.menu
+    ld a, BANK(RunMenu)    ;   Load in the bank
     ld [rROMB0], a
 
-    ld a, LCDC_DEFAULT      ; Enable PPU
-    ld [rLCDC], a
-    
-    ; Enable interrupts
-    ei
+    call RunMenu
+    jr .loop
+.map
+    ld a, BANK(RunGame)    ;   Load in the bank
+    ld [rROMB0], a
 
-    jp GameLoop
+    call RunGame
+    jr .loop
+.serial
+    ld a, BANK(RunSerialMode)    ;   Load in the bank
+    ld [rROMB0], a
+
+    call RunSerialMode
+    jr .loop

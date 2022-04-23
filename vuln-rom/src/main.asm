@@ -1,5 +1,5 @@
 SECTION "Game Loop", ROMX
-GameLoop::
+RunGame::
     ld a, 0
     ld [testVariable], a
 

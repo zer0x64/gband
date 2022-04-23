@@ -75,6 +75,52 @@ MemSet::
 	jr nz, .loop
 	ret
 
+; Copy data into VRAM. Will use GDMA if available
+; @param de Pointer to beginning of block to copy
+; @param hl Pointer to where to copy (bytes will be written from there onwards)
+; @param bc Amount of bytes to copy (0 causes 65536 bytes to be copied)
+; @return de Pointer to byte after last copied one
+; @return hl Pointer to byte after last written one
+; @return bc 0
+; @return a 0
+; @return f Z set, C reset
+CopyToVRAM::
+	ld a, [isCgb]
+	cp 1
+	jr z, .isCgb
+	; On DMG we memcpy
+	call MemCpy
+	ret
+.isCgb
+	; On CGB we call a DMA
+	ld a, d
+    ld [rHDMA1], a
+	ld a, e
+    ld [rHDMA2], a
+
+	ld a, h
+    ld [rHDMA3], a
+	ld a, l
+    ld [rHDMA4], a
+
+	; Convert length to the DMA format
+	ld a, c
+	srl a
+	srl a
+	srl a
+	srl a
+	ld c, a
+	ld a, b
+	sla a
+	sla a
+	sla a
+	sla a
+	or c
+	dec a
+
+    ld [rHDMA5], a
+	ret
+
 ; Call a method in another bank
 ; @param a Bank number
 ; @param hl Address of the function to call
@@ -90,7 +136,15 @@ ReturnToOldBank::
 
 ; Handler for the VBLANK
 VBlankHandler::
+	push AF
+	push BC
+	push DE
+	push HL
     call OamDma     ; Copy Shadow OAM to OAM
     ld a, 0         ; Tell the CPU it can continue the game loop
     ld [waitForFrame], a
+	pop HL
+	pop DE
+	pop BC
+	pop AF
     reti
