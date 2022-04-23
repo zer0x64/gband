@@ -1,3 +1,4 @@
-build/
-vuln_rom.gb
-vuln_rom.sym
+/bin/
+/obj/
+/dep/
+/res/
