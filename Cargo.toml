@@ -2,6 +2,7 @@
 members = [
     "./gband",
     "./gband-wgpu",
+    "./gband-server",
 ]
 resolver = "2"
 
