@@ -22,10 +22,6 @@ RunMenu::
     ld bc, menuAttributes.end - menuAttributes
     call CopyToVRAM
 
-    ; Start GDMA
-    ld a, (((menuAttributes.end - menuAttributes) >> 4) - 1) | HDMA5F_MODE_GP
-    ld [rHDMA5], a
-
     ; Reset VRAM bank
     ld a, 0
     ld [rVBK], a

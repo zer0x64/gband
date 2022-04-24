@@ -207,6 +207,36 @@ InitCgb::
     dec c
     jr nz, .object_copy_loop
 
+    ; GDMA the sprite tile data
+    ld a, HIGH(spriteTileData)
+    ld [rHDMA1], a
+    ld a, LOW(spriteTileData)
+    ld [rHDMA2], a
+
+    ld a, HIGH(_VRAM8000)
+    ld [rHDMA3], a
+    ld a, LOW(_VRAM8000)
+    ld [rHDMA4], a
+
+    ; Start GDMA
+    ld a, (((spriteTileData.end - spriteTileData) >> 4) - 1) | HDMA5F_MODE_GP
+    ld [rHDMA5], a
+
+    ; GDMA the background tile data
+    ld a, HIGH(backgroundTileData)
+    ld [rHDMA1], a
+    ld a, LOW(backgroundTileData)
+    ld [rHDMA2], a
+
+    ld a, HIGH(_VRAM8800)
+    ld [rHDMA3], a
+    ld a, LOW(_VRAM8800)
+    ld [rHDMA4], a
+
+    ; Start GDMA
+    ld a, (((backgroundTileData.end - backgroundTileData) >> 4) - 1) | HDMA5F_MODE_GP
+    ld [rHDMA5], a
+
     ; GDMA the ASCII tile data
     ld a, HIGH(asciiTileData)
     ld [rHDMA1], a
@@ -230,6 +260,18 @@ InitDmg::
     ld [rBGP], a
     ld [rOBP0], a
     ld [rOBP1], a
+
+    ; Copy the sprite tile data
+    ld de, spriteTileData
+    ld hl, _VRAM8000
+    ld bc, spriteTileData.end - spriteTileData
+    call MemCpy
+
+    ; Copy the ascii tile data
+    ld de, backgroundTileData
+    ld hl, _VRAM8800
+    ld bc, backgroundTileData.end - backgroundTileData
+    call MemCpy
 
     ; Copy the ascii tile data
     ld de, asciiTileData
@@ -325,6 +367,14 @@ db "Super Myco Boi!!"
 .end
 
 SECTION FRAGMENT "INIT", ROMX, ALIGN[8]
+spriteTileData::
+INCBIN "res/sprite_tiles.bin"
+.end
+
+backgroundTileData::
+INCBIN "res/background_tiles.bin"
+.end
+
 asciiTileData::
 INCBIN "res/ascii_tiles.bin"
 .end
