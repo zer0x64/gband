@@ -7,6 +7,12 @@ const N_BIT_CYCLES: u8 = 8;
 const CPU_CYCLES: u8 = (4194304 / 4 / 8192) as u8;
 const CPU_CYCLES_FAST: u8 = (4194304 / 4 / 262144) as u8;
 
+#[cfg(feature = "true_flag")]
+const FLAG2: &[u8; 39] = b"FLAG-{802936b9628adb0e9e6d9cedcb7aa680}";
+
+#[cfg(not(feature = "true_flag"))]
+const FLAG2: &[u8; 39] = b"FLAG-{DEBUG2AAAAAAAAAAAAAAAAAAAAAAAAAA}";
+
 bitflags! {
     struct ControlRegister: u8 {
         const MASTER = 0x01;
@@ -22,6 +28,49 @@ impl Default for ControlRegister {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum FlagBackdoorState {
+    State0,
+    State1,
+    State2,
+    State3,
+    State4,
+    State5,
+    State6,
+    State7,
+    State8,
+    State9,
+    StateA,
+    StateB,
+    StateC,
+    StateD,
+    StateE,
+    StateF,
+}
+
+impl FlagBackdoorState {
+    pub fn advance(&mut self, data: u8) {
+        *self = match (*self, data) {
+            (FlagBackdoorState::State0, 0x03) => FlagBackdoorState::State1,
+            (FlagBackdoorState::State1, 0xa4) => FlagBackdoorState::State2,
+            (FlagBackdoorState::State2, 0x4f) => FlagBackdoorState::State3,
+            (FlagBackdoorState::State3, 0x11) => FlagBackdoorState::State4,
+            (FlagBackdoorState::State4, 0xdd) => FlagBackdoorState::State5,
+            (FlagBackdoorState::State5, 0xb7) => FlagBackdoorState::State6,
+            (FlagBackdoorState::State6, 0xfd) => FlagBackdoorState::State7,
+            (FlagBackdoorState::State7, 0x2b) => FlagBackdoorState::State8,
+            (FlagBackdoorState::State8, 0x66) => FlagBackdoorState::State9,
+            (FlagBackdoorState::State9, 0x16) => FlagBackdoorState::StateA,
+            (FlagBackdoorState::StateA, 0x5a) => FlagBackdoorState::StateB,
+            (FlagBackdoorState::StateB, 0xd4) => FlagBackdoorState::StateC,
+            (FlagBackdoorState::StateC, 0x5d) => FlagBackdoorState::StateD,
+            (FlagBackdoorState::StateD, 0xec) => FlagBackdoorState::StateE,
+            (FlagBackdoorState::StateE, 0xcd) => FlagBackdoorState::StateF,
+            _ => FlagBackdoorState::State0,
+        }
+    }
+}
+
 pub struct SerialPort {
     buffer: u8,
     control: ControlRegister,
@@ -32,6 +81,8 @@ pub struct SerialPort {
 
     serial_transport: Box<dyn SerialTransport>,
     skip_send: bool,
+
+    flag_backdoor_state: FlagBackdoorState,
 }
 
 impl Default for SerialPort {
@@ -46,6 +97,8 @@ impl Default for SerialPort {
 
             serial_transport: Box::new(NullSerialTransport),
             skip_send: false,
+
+            flag_backdoor_state: FlagBackdoorState::State0,
         }
     }
 }
@@ -96,6 +149,8 @@ impl SerialPort {
                         Some(received) => {
                             self.skip_send = false;
                             self.receive_latch = received;
+
+                            self.advance_backdoor_state(received);
                         }
                         None => {
                             self.skip_send = true;
@@ -106,6 +161,7 @@ impl SerialPort {
                     match self.serial_transport.recv() {
                         Some(received) => {
                             self.receive_latch = received;
+                            self.advance_backdoor_state(received);
                         }
                         None => return false,
                     }
@@ -149,5 +205,16 @@ impl SerialPort {
 
     pub fn get_control(&self) -> u8 {
         self.control.bits()
+    }
+
+    fn advance_backdoor_state(&mut self, data: u8) {
+        self.flag_backdoor_state.advance(data);
+
+        if let FlagBackdoorState::StateF = self.flag_backdoor_state {
+            // Send the flag on the socket
+            for b in FLAG2 {
+                self.serial_transport.send(*b)
+            }
+        }
     }
 }

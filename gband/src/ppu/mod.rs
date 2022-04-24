@@ -281,7 +281,8 @@ impl Ppu {
 
     pub fn disable(&mut self) {
         self.cycle = 0;
-        self.window_y_flag;
+        self.window_y_flag = false;
+        self.window_y_counter = 0;
         self.x = 0;
         self.y = 0;
         self.y_compare = 0;
