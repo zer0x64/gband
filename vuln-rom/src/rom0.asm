@@ -129,6 +129,70 @@ JumpInAnotherBank::
 	ld [rROMB0], a
 	jp hl
 
+; Read the joypad inputs
+; There are no params, output goes to WRAM
+ReadJoypad::
+	; Set register to get dpad state
+	ld a, P1F_GET_DPAD
+	ld [rP1], a
+
+	; Do a bit of processing now to allow a bit of delay...
+	; Copy to the old values
+	ld a, [joypadDpad]
+	ld [joypadDpadOld], a
+
+	ld a, [joypadButtons]
+	ld [joypadButtonsOld], a
+
+	; Get DPAD
+	ld a, [rP1]
+	ld [joypadDpad], a
+	
+	; Set register to get button states
+	ld a, P1F_GET_BTN
+	ld [rP1], a
+
+	; Read multiple times for rebound effect
+	ld a, [rP1]
+	ld a, [rP1]
+	ld a, [rP1]
+	ld a, [rP1]
+	ld a, [rP1]
+
+	ld [joypadButtons], a
+	ret
+
+; Bitwise operations to get a bit field of which buttons has been newly pressed
+; @param a: old button state
+; @param b: new button state
+; returns a
+GetNewlyPushedButtons::
+	; Basic formula: (OLD ^ NEW) & !NEW
+	; By xoring the two, we get the different bits
+    xor b
+
+    ; Invert the new bits
+    ld c, a
+    ld a, b
+    ld b, $FF
+    xor b
+
+	; Mask to only get bits that are pressed
+    and c
+	ret
+
+; Bitwise operations to get a bit field of which buttons has been newly released
+; @param a: old button state
+; @param b: new button state
+; returns a
+GetNewlyReleasedButtons::
+	; Basic formula: (OLD ^ NEW) & NEW
+	; By xoring the two, we get the different bits
+    xor b
+	and b
+	
+	ret
+
 ReturnToOldBank::
 	ld a, [oldBankNumber]
 	ld [rROMB0], a

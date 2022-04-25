@@ -87,7 +87,7 @@ Init::
 
     ; Disable SRAM
     ld a, CART_SRAM_DISABLE
-    ld a, rRAMG
+    ld [rRAMG], a
 
     ; Set scroll values to 0
     ld a, 0
@@ -147,12 +147,14 @@ InitSgb::
     ; Reset VRAM
     ld a, 0
     ld hl, _VRAM
-    ld bc, _VRAM + $2000
+    ld bc, $2000
     call MemSet
 
     ld hl, MaskEnCancelPacket
     call SendPackets
 
+    ld a, 0
+    ld [rLCDC], a
     ret
 
 InitCgb::
@@ -464,8 +466,9 @@ oamDmaROM::
 
 ; TODO: Put the actual palettes
 cgbBackgroundPalette::
+; Defaults to a greyscale palette
 .bg0
-DW $0000, $1111, $2222, $3333
+DW $FFFF, $5294, $294a, $0000
 .bg1
 DW $4444, $5555, $6666, $7777
 .bg2
@@ -483,8 +486,9 @@ DW $CDCD, $DCDC, $EFEF, $FEFE
 .end
 
 cgbObjectPalette::
+; Defaults to a greyscale palette
 .obj0
-DW $0000, $1111, $2222, $3333
+DW $FFFF, $5294, $294a, $0000
 .obj1
 DW $4444, $5555, $6666, $7777
 .obj2

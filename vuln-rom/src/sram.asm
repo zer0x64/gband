@@ -2,12 +2,14 @@ SECTION "Save data", SRAM
 saveHeader::
 ds $10
 .end::
-playerNameLength::
+saveIsInitialized::
 db
-playerName::
+playerNameLengthSram::
+db
+playerNameSram::
 ds $8
-flagSramLength::
+flagLengthSram::
 db
 flagSram::
-ds $20
+ds $10
 sramEnd::
