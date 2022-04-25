@@ -6,40 +6,40 @@ Init::
     ld a, 0
     ld [waitForFrame], a
 
-	; Check and init Sgb frame
+    ; Check and init Sgb frame
     ld a, [isSgb]
-	cp $14
-	jr z, .runningInSgb
+    cp $14
+    jr z, .runningInSgb
 
-	; Not running in SGB, setting the value to 0
-	ld a, 0
-	jr .sgbCheckComplete
-	
+    ; Not running in SGB, setting the value to 0
+    ld a, 0
+    jr .sgbCheckComplete
+    
 .runningInSgb
-	; Running in SGB mode, init frame and set the value to 1
-	call InitSgb
-	ld a, 1
+    ; Running in SGB mode, init frame and set the value to 1
+    call InitSgb
+    ld a, 1
 
-	.sgbCheckComplete
-	ld [isSgb], a
+.sgbCheckComplete
+    ld [isSgb], a
 
-	; Check A for CGB now
-	ld a, [isCgb]
-	cp $11
-	jr z, .runningInCgb
+    ; Check A for CGB now
+    ld a, [isCgb]
+    cp $11
+    jr z, .runningInCgb
 
-	; Not running in CGB, setting the value to 0 and init DMG
+    ; Not running in CGB, setting the value to 0 and init DMG
     call InitDmg
-	ld a, 0
-	jr .cgbCheckComplete
-	
+    ld a, 0
+    jr .cgbCheckComplete
+    
 .runningInCgb
-	; Running in CGB mode, init frame and set the value to 1
-	call InitCgb
-	ld a, 1
+    ; Running in CGB mode, init frame and set the value to 1
+    call InitCgb
+    ld a, 1
 
 .cgbCheckComplete
-	ld [isCgb], a
+    ld [isCgb], a
 
     ; Set the gamemode to the map by default (if the map is valid)
     ; TODO: Uncomment this when done working with the menu
@@ -114,65 +114,47 @@ Init::
     ret
 
 InitSgb::
-    ; TODO: Init SGB frame
-    ; Copy the ascii tile data
-    ld de, asciiTileData
-    ld hl, _VRAM8000
-    ld bc, asciiTileData.end - asciiTileData
-    call MemCpyTo4bpp
+    ; Check if we really are running on an SGB
+    call CheckSGB
+    ret nc
 
-    ; Setup the PPU for transfer
-    call FillScreenWithSGBMap
+    ; Send magic packets to start transfer
+    di
+    call PrepareSnesTransfer
+    ei
 
+    ; Copy the 128 tiles of the frame to SNES RAM
+    ld a, 1
+    ld [copyingSGBTileData], a
+    ld hl, ChrTrnPacket
+    ld de, SGBBorderGraphics
+    call CopyGfxToSnes
+
+    ; Copy the frame map to SNES RAM
+    xor a
+    ld [copyingSGBTileData], a
+    ld hl, PctTrnPacket
+    ld de, BorderPalettes
+    call CopyGfxToSnes
+
+    ; Copy the custom game palettes to SNES RAM
+    xor a
+    ld [copyingSGBTileData], a
+    ld hl, PalTrnPacket
+    ld de, SGBSuperPalettes
+    call  CopyGfxToSnes
+
+    ; Reset VRAM
     ld a, 0
-    ld hl, localVariables
-    ld bc, localVariables.end - localVariables
+    ld hl, _VRAM
+    ld bc, _VRAM + $2000
     call MemSet
 
-    ; Send the ASCII table to the SNES
-    ld a, ($13 << 3) | 1        ; CHR_TRAN header
-    ld [localVariables], a
-    ld a, 0                     ; First bank | Background
-    ld [localVariables + 1], a
-
-    ; Send the packet
-    ld hl, localVariables
+    ld hl, MaskEnCancelPacket
     call SendPackets
-
-    ; Wait 5 frames for transfer
-    call WaitFor5Frames
-
-    ; Disable LCD during transfer
-    ld a, 0
-    ld [rLCDC], a
-
-    ; Copy the border tile map tile data
-    ld de, sgbBorderTileMap
-    ld hl, _VRAM8000
-    ld bc, sgbBorderTileMap.end - sgbBorderTileMap
-    call MemCpy
-
-    ; Restart PPU
-    call SetupSGBLCDC
-
-    ; Send the border tilemap to the SNES
-    ld a, ($14 << 3) | 1        ; PCT_TRAN header
-    ld [localVariables], a
-    ld a, 0                     ; First bank | Background
-    ld [localVariables + 1], a
-
-    ; Send the packet
-    ld hl, localVariables
-    call SendPackets
-
-    ; Wait 5 frames for transfer
-    call WaitFor5Frames
-
-    ; Shut down the PPU
-    ld a, 0
-    ld [rLCDC], a
 
     ret
+
 InitCgb::
     ; Init the palettes
     ; Background Palette
@@ -281,37 +263,194 @@ InitDmg::
 
     ret
 
-WaitFor5Frames::
-    ld b, 10
-.waitForVblankOn
-    ld a, [rSTAT]
-    and %11
-    cp 1
-    jr z, .waitForVblankOn
-.waitForVblankOff
-    ld a, [rSTAT]
-    and %11
-    cp 1
-    jr nz, .waitForVblankOff
-    dec b
-    jr nz, .waitForVblankOn
+; Initialize SNES transfer by sending Freeze and some magic packets
+PrepareSnesTransfer::
+    ld hl, MaskEnFreezePacket
+    call SendPackets
+    ld hl, DataSnd0
+    call SendPackets
+    ld hl, DataSnd1
+    call SendPackets
+    ld hl, DataSnd2
+    call SendPackets
+    ld hl, DataSnd3
+    call SendPackets
+    ld hl, DataSnd4
+    call SendPackets
+    ld hl, DataSnd5
+    call SendPackets
+    ld hl, DataSnd6
+    call SendPackets
+    ld hl, DataSnd7
+    call SendPackets
     ret
 
-MemCpyTo4bpp::
-	; Increment B if C is non-zero
-	dec bc
-	inc b
-	inc c
+; Indicate whether the game is running on an SGB.
+; @return Carry flag if true
+CheckSGB::
+    ld hl, MltReq2Packet
+    di
+    call SendPackets
+    ei
+
+    call Wait7000
+    ldh a, [rP1]
+    and $3
+    cp $3
+    jr nz, .isSGB
+
+    ld a, $20
+    ldh [rP1], a
+    ldh a, [rP1]
+    ldh a, [rP1]
+    call Wait7000
+    call Wait7000
+
+    ld a, $30
+    ldh [rP1], a
+    call Wait7000
+    call Wait7000
+
+    ld a, $10
+    ldh [rP1], a
+    ldh a, [rP1]
+    ldh a, [rP1]
+    ldh a, [rP1]
+    ldh a, [rP1]
+    ldh a, [rP1]
+    ldh a, [rP1]
+    call Wait7000
+    call Wait7000
+
+    ld a, $30
+    ldh [rP1], a
+    ldh a, [rP1]
+    ldh a, [rP1]
+    ldh a, [rP1]
+    call Wait7000
+    call Wait7000
+
+    ldh a, [rP1]
+    and $3
+    cp $3
+    jr nz, .isSGB
+
+    call SendMltReq1Packet
+    and a
+    ret
+.isSGB
+    call SendMltReq1Packet
+    scf
+    ret
+
+SendMltReq1Packet:
+    ld hl, MltReq1Packet
+    call SendPackets
+    jp Wait7000
+
+Wait7000:
+    ; Each loop takes 9 cycles so this routine actually waits 63000 cycles.
+    ld de, 7000
 .loop
-	ld a, [de]
-	ld [hli], a
-	ld [hli], a
-	inc de
-	dec c
-	jr nz, .loop
-	dec b
-	jr nz, .loop
-	ret
+    nop
+    nop
+    nop
+    dec de
+    ld a, d
+    or e
+    jr nz, .loop
+    ret
+
+; Copy graphics data to the SNES
+; @param de The graphics data
+; @param hl The packet to send
+CopyGfxToSnes::
+    di
+    push hl
+
+    ; Disable LCD during transfer
+    ld a, 0
+    ld [rLCDC], a
+    
+    ; Transfer background palette value
+    ld a, $e4
+    ldh [rBGP], a
+    ld hl, _VRAM8800
+
+    ld a, [copyingSGBTileData]
+    and a
+    jr z, .notCopyingTileData
+    call CopySGBBorderTiles
+    jr .next
+
+.notCopyingTileData
+    ; Copy 4K data from VRAM to SNES
+    ld bc, $1000
+    call MemCpy
+
+.next
+    ; Copy visible background to SNES
+    ld hl, _SCRN0
+    ld de, $c ; Background additional width
+    ld a, $80 ; VRAM address of the first tile
+    ld c, $d ; Nb rows
+
+.loop
+    ld b, $14 ; Visible background width
+
+.innerLoop
+    ld [hli], a ; Tile set
+    inc a
+    dec b
+    jr nz, .innerLoop
+    add hl, de ; Next visible background
+    dec c
+    jr nz, .loop
+
+    ; Turn on LCD to start transfer
+    ld a, LCDC_DEFAULT
+    ldh [rLCDC], a
+
+    ; Send packet
+    pop hl
+    call SendPackets
+
+    ; Restore background palette
+    xor a
+    ldh [rBGP], a
+    ei
+    ret
+
+; SGB tile data is stored in a 4BPP planar format.
+; Each tile is 32 bytes. The first 16 bytes contain bit planes 1 and 2, while
+; the second 16 bytes contain bit planes 3 and 4.
+; This function converts 2BPP planar data into this format by mapping
+; 2BPP colors 0-3 to 4BPP colors 0-3. 4BPP colors 4-15 are not used.
+; @param de Graphics data
+; @param hl Destination
+CopySGBBorderTiles::
+    ld b, 128
+.tileLoop
+; Copy bit planes 1 and 2 of the tile data.
+    ld c, 16
+.copyLoop
+    ld a, [de]
+    ld [hli], a
+    inc de
+    dec c
+    jr nz, .copyLoop
+
+; Zero bit planes 3 and 4.
+    ld c, 16
+    xor a
+.zeroLoop
+    ld [hli], a
+    dec c
+    jr nz, .zeroLoop
+
+    dec b
+    jr nz, .tileLoop
+    ret
 
 oamDmaROM::
     ld a, HIGH(shadowOAM)
@@ -379,9 +518,8 @@ asciiTileData::
 INCBIN "res/ascii_tiles.bin"
 .end
 
-sgbBorderTileMap::
-INCBIN "res/sgb_border_tilemap.bin"
-.end
+INCLUDE "sgb_packets.inc"
+INCLUDE "sgb_border.inc"
 
 SECTION "OAM DMA Hram", HRAM
 OamDma::

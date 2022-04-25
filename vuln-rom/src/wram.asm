@@ -11,6 +11,8 @@ isCgb::
     DB
 isSgb::
     DB
+copyingSGBTileData::
+    DB
 
 ; Used to tell the game in which state it is.
 gameState::        
