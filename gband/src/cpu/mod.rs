@@ -715,7 +715,7 @@ impl Cpu {
         result
     }
 
-    fn check_conditional(&mut self, condition: Condition) -> bool {
+    fn check_conditional(&self, condition: Condition) -> bool {
         match condition {
             Condition::NonZero => !self.f.contains(FlagRegister::Z),
             Condition::Zero => self.f.contains(FlagRegister::Z),

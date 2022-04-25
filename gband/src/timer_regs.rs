@@ -52,12 +52,17 @@ impl TimerRegisters {
             0xFF05 => {
                 if self.interrupt_cycle_countdown != 1 {
                     // On this specific cycle, the value gets overwritten by TMA, so the write is ignored
-                    self.counter = data
+                    self.counter = data;
                 }
             }
 
             // TMA modulo
-            0xFF06 => self.modulo = data,
+            0xFF06 => {
+                self.modulo = data;
+                if self.interrupt_cycle_countdown == 1 {
+                    self.counter = data;
+                }
+            }
 
             // Control
             0xFF07 => self.control.bits = data & 0x07,
