@@ -56,3 +56,7 @@ INCBIN "res/map_tilemap.bin"
 mapAttributes::
 INCBIN "res/map_attributes.bin"
 .end
+
+mapLogic::
+INCBIN "res/map_logic.bin"
+.end

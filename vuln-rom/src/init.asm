@@ -571,7 +571,7 @@ cgbBackgroundPalette::
 .bg0
 DW $FFFF, $5294, $294a, $0000
 .bg1
-DW $4444, $5555, $6666, $7777
+DW $ABAB, $7fff, $001f, $0000
 .bg2
 DW $8888, $9999, $AAAA, $BBBB
 .bg3
