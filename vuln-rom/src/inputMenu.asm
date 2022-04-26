@@ -14,8 +14,13 @@ TEXT_ENTRY_LOCATION = $86
 
 SECTION FRAGMENT "Input Menu", ROMX
 RunInputMenu::
+    ; Disable the PPU
     xor a
     ld [rLCDC], a
+
+    ; We start without any scroll
+    ld [shadowScrollX], a
+    ld [shadowScrollY], a
 
     ; Copy the tile map
     ld de, menuTileMap

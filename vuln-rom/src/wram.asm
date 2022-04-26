@@ -37,8 +37,9 @@ joypadButtonsOld::
 ; From here forward, we can declare state-specific variables and they can overlap
 copyingSGBTileDataState::
 menuCursorPosition::
-testVariable::
+characterPositionX::
     DB
+characterPositionY::
 menuState::
     DB
 menuInputLength::
@@ -48,6 +49,12 @@ menuInput::
 wStack::
 	ds STACK_SIZE   ; Define a stack here. I make sure it's after "localVariables" so a buffer overflow can overwrite a function pointer here
 wStackBottom::
+
+SECTION "Shadow Scroll", WRAM0
+shadowScrollX::
+    DB
+shadowScrollY::
+    DB
 
 SECTION UNION "Shadow OAM", WRAM0, ALIGN[8]
 shadowOAM::

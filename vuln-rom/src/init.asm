@@ -12,6 +12,12 @@ Init::
     xor a
     ld [rIE], a
 
+    ; Set scroll values to 0
+    ld [rSCY], a
+    ld [rSCX], a
+    ld [shadowScrollX], a
+    ld [shadowScrollY], a
+
     ; We are not waiting for a frame
     ld a, 0
     ld [waitForFrame], a
@@ -88,11 +94,6 @@ Init::
     ; Disable SRAM
     ld a, CART_SRAM_DISABLE
     ld [rRAMG], a
-
-    ; Set scroll values to 0
-    ld a, 0
-    ld [rSCY], a
-    ld [rSCX], a
 
     ; Copy OAM DMA routine
     ld de, oamDmaROM
@@ -591,7 +592,7 @@ cgbObjectPalette::
 .obj0
 DW $FFFF, $5294, $294a, $0000
 .obj1
-DW $4444, $5555, $6666, $7777
+DW $ABAB, $7fff, $001f, $0000
 .obj2
 DW $8888, $9999, $AAAA, $BBBB
 .obj3

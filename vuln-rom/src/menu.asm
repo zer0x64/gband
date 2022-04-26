@@ -8,8 +8,13 @@ CURSOR_POSITION_NEW_GAME = $95
 
 SECTION FRAGMENT "Menu", ROMX
 RunMenu::
+    ; Disable the PPU
     xor a
     ld [rLCDC], a
+
+    ; We start without any scroll
+    ld [shadowScrollX], a
+    ld [shadowScrollY], a
 
     ; Copy the tile map
     ld de, menuTileMap

@@ -200,13 +200,28 @@ ReturnToOldBank::
 
 ; Handler for the VBLANK
 VBlankHandler::
+	; Save the current state
 	push AF
 	push BC
 	push DE
 	push HL
-    call OamDma     ; Copy Shadow OAM to OAM
-    ld a, 0         ; Tell the CPU it can continue the game loop
+
+	; Copy Shadow OAM to OAM
+    call OamDma
+
+	; Load in the shadow scroll values
+	ld a, [shadowScrollX]
+	ld [rSCX], a
+
+	ld a, [shadowScrollY]
+	ld [rSCY], a
+
+	; Tell the CPU it can continue the game loop
+    ld a, 0
     ld [waitForFrame], a
+
+
+	; Load the state before the interrupt
 	pop HL
 	pop DE
 	pop BC
