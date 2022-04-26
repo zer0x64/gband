@@ -18,8 +18,6 @@ isCgb::
     DB
 isSgb::
     DB
-copyingSGBTileDataState::
-    DB
 ; Used to tell the game in which state it is.
 gameState::        
     DB
@@ -37,6 +35,7 @@ joypadDpadOld::
 joypadButtonsOld::
     DB
 ; From here forward, we can declare state-specific variables and they can overlap
+copyingSGBTileDataState::
 menuCursorPosition::
 testVariable::
     DB

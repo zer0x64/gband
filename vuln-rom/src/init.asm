@@ -51,13 +51,6 @@ Init::
 .cgbCheckComplete
     ld [isCgb], a
 
-    ; Set the gamemode to the map by default (if the map is valid)
-    ; TODO: Uncomment this when done working with the menu
-    ;ld a, GAMESTATE_MAP
-    ld a, GAMESTATE_MENU
-
-    ld [gameState], a
-
     ; Validate and create save file
     ; Enable SRAM
     ld a, CART_SRAM_ENABLE
@@ -89,11 +82,8 @@ Init::
     ld bc, sramEnd - saveHeader.end
     call MemSet
 
-    ; Since we have a new save, set the game state to prompt for name and flag
-    ld a, GAMESTATE_MENU
-    ld [gameState], a
-
 .saveIsValid
+    call LoadSaveData
 
     ; Disable SRAM
     ld a, CART_SRAM_DISABLE
@@ -488,7 +478,7 @@ CopySGBBorderTiles::
 ; @return bc 0
 ; @return a 0
 ; @return f Z set, C reset
-DeobfuscateSgbFrame::
+DeobfuscateSgbFrame:
 	; Increment B if C is non-zero
 	dec bc
 	inc b
@@ -529,6 +519,38 @@ DeobfuscateSgbFrame::
 	dec b
 	jr nz, .loop
 	ret
+
+LoadSaveData:
+    ; Drop straight into the input menu if there is not a valid save
+    ld a, GAMESTATE_INPUT_MENU
+    ld [gameState], a
+
+    ; Check if the save is fully initialized
+    ld a, [saveIsInitialized]
+    cp 0
+    jr z, .dontLoad
+    
+    ; Copy the name and flag to RAM
+    ld a, [playerNameLengthSram]
+    ld [playerNameLengthSram], a
+    ld a, [flagLengthSram]
+    ld [flagLengthSram], a
+
+    ld de, playerNameSram
+    ld hl, playerNameRam
+    ld bc, playerNameRam.end - playerNameRam
+    call MemCpy
+
+    ld de, flagSram
+    ld hl, flagRam
+    ld bc, flagRam.end - flagRam
+    call MemCpy
+
+    ; Drop into the standard menu if there is a save
+    ld a, GAMESTATE_MENU
+    ld [gameState], a
+.dontLoad
+    ret
 
 oamDmaROM::
     ld a, HIGH(shadowOAM)
