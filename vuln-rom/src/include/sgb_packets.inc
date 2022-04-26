@@ -55,7 +55,8 @@ ENDM
 PalTrnPacket:  PAL_TRN
 MltReq1Packet: MLT_REQ 1
 MltReq2Packet: MLT_REQ 2
-ChrTrnPacket:  CHR_TRN 0, 0
+ChrTrnPacket00:  CHR_TRN 0, 0
+ChrTrnPacket80:  CHR_TRN 1, 0
 PctTrnPacket:  PCT_TRN
 
 MaskEnFreezePacket: MASK_EN 1

@@ -1,7 +1,17 @@
 include "constants.inc"
 SECTION FRAGMENT "INIT", ROMX
 
+LCDC_SGB_TRAN = LCDCF_BGON | LCDCF_OBJOFF | LCDCF_OBJ8 | LCDCF_BG9800 | LCDCF_BG8800 | LCDCF_WINOFF | LCDCF_WIN9C00 | LCDCF_ON
+
+SGB_TRANSFER_TYPE_TILE_DATA = 0
+SGB_TRANSFER_TYPE_TILE_MAP = 1
+SGB_TRANSFER_TYPE_PALETTES = 2
+
 Init::
+    ; Disable vblank interrupts for now
+    xor a
+    ld [rIE], a
+
     ; We are not waiting for a frame
     ld a, 0
     ld [waitForFrame], a
@@ -124,22 +134,29 @@ InitSgb::
     ei
 
     ; Copy the 128 tiles of the frame to SNES RAM
-    ld a, 1
-    ld [copyingSGBTileData], a
-    ld hl, ChrTrnPacket
+    ld a, SGB_TRANSFER_TYPE_TILE_DATA
+    ld [copyingSGBTileDataState], a
+    ld hl, ChrTrnPacket00
+    ld de, SGBBorderGraphicsAscii
+    call CopyGfxToSnes
+
+    ; Copy the next 128 tiles of the frame to SNES RAM
+    ld a, SGB_TRANSFER_TYPE_TILE_DATA
+    ld [copyingSGBTileDataState], a
+    ld hl, ChrTrnPacket80
     ld de, SGBBorderGraphics
     call CopyGfxToSnes
 
     ; Copy the frame map to SNES RAM
-    xor a
-    ld [copyingSGBTileData], a
+    ld a, SGB_TRANSFER_TYPE_TILE_MAP
+    ld [copyingSGBTileDataState], a
     ld hl, PctTrnPacket
     ld de, BorderPalettes
     call CopyGfxToSnes
 
     ; Copy the custom game palettes to SNES RAM
-    xor a
-    ld [copyingSGBTileData], a
+    ld a, SGB_TRANSFER_TYPE_PALETTES
+    ld [copyingSGBTileDataState], a
     ld hl, PalTrnPacket
     ld de, SGBSuperPalettes
     call  CopyGfxToSnes
@@ -266,7 +283,7 @@ InitDmg::
     ret
 
 ; Initialize SNES transfer by sending Freeze and some magic packets
-PrepareSnesTransfer::
+PrepareSnesTransfer:
     ld hl, MaskEnFreezePacket
     call SendPackets
     ld hl, DataSnd0
@@ -379,17 +396,25 @@ CopyGfxToSnes::
     ldh [rBGP], a
     ld hl, _VRAM8800
 
-    ld a, [copyingSGBTileData]
-    and a
-    jr z, .notCopyingTileData
+    ld a, [copyingSGBTileDataState]
+    cp SGB_TRANSFER_TYPE_TILE_MAP
+    jr z, .copyingTileMap
+    cp SGB_TRANSFER_TYPE_PALETTES
+    jr z, .copyingPalettes
     call CopySGBBorderTiles
     jr .next
 
-.notCopyingTileData
+.copyingTileMap
     ; Copy 4K data from VRAM to SNES
+    ld bc, BorderPalettes.endTileMap - BorderPalettes
+    call DeobfuscateSgbFrame
+
+    ld bc, BorderPalettes.end - BorderPalettes.endTileMap
+    call MemCpy
+    jr .next
+.copyingPalettes
     ld bc, $1000
     call MemCpy
-
 .next
     ; Copy visible background to SNES
     ld hl, _SCRN0
@@ -410,7 +435,7 @@ CopyGfxToSnes::
     jr nz, .loop
 
     ; Turn on LCD to start transfer
-    ld a, LCDC_DEFAULT
+    ld a, LCDC_SGB_TRAN
     ldh [rLCDC], a
 
     ; Send packet
@@ -454,6 +479,57 @@ CopySGBBorderTiles::
     jr nz, .tileLoop
     ret
 
+; Copies a block of memory somewhere else
+; @param de Pointer to beginning of block to copy
+; @param hl Pointer to where to copy (bytes will be written from there onwards)
+; @param bc Amount of bytes to copy (0 causes 65536 bytes to be copied)
+; @return de Pointer to byte after last copied one
+; @return hl Pointer to byte after last written one
+; @return bc 0
+; @return a 0
+; @return f Z set, C reset
+DeobfuscateSgbFrame::
+	; Increment B if C is non-zero
+	dec bc
+	inc b
+	inc c
+.loop
+	ld a, [de]
+    push hl
+
+    ; XOR with a byte of the key
+    ; Here we fetch the index of the key
+    ld hl, sgbObfuscationKey
+    xor a
+    ld a, e
+    and $0F
+
+    ; The following code adds A to HL because the arch is kinda cursed
+    add   a, l    ; A = A+L
+    ld    l, a    ; L = A+L
+    adc   a, h    ; A = A+L+H+carry
+    sub   l       ; A = H+carry
+    ld    h, a    ; H = H+carry
+    
+    ; Load the key byte
+    ld a, [hl]
+
+    ; Fetch the data byte and deobfuscate it
+    ld l, a
+    ld a, [de]
+    xor l
+
+    pop hl
+
+	ld [hli], a
+
+	inc de
+	dec c
+	jr nz, .loop
+	dec b
+	jr nz, .loop
+	ret
+
 oamDmaROM::
     ld a, HIGH(shadowOAM)
     ldh [rDMA], a
@@ -463,6 +539,9 @@ oamDmaROM::
     jr nz, .wait
     ret
 .end
+
+sgbObfuscationKey:
+DB $7c, $6b, $87, $45, $23, $db, $65, $99, $11, $ae, $f3, $a7, $42, $b9, $48, $02
 
 ; TODO: Put the actual palettes
 cgbBackgroundPalette::

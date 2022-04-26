@@ -2,6 +2,9 @@ include "constants.inc"
 
 SECTION FRAGMENT "Game Loop", ROMX
 RunGame::
+    xor a
+    ld [rLCDC], a
+
     ; Copy the tile map
     ld de, mapTileMap
     ld hl, _SCRN0

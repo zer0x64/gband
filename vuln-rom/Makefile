@@ -19,8 +19,10 @@ ifneq ($(strip $(shell which rm)),)
     # POSIX OSes
     RM_RF := rm -rf
     MKDIR_P := mkdir -p
+	PY := python
 else
     # Windows
+	PY := python
     RM_RF := -del /q
     MKDIR_P := -mkdir
 endif
@@ -90,6 +92,10 @@ VPATH := src
 res/%.bin: res/%.png
 	@$(MKDIR_P) $(@D)
 	$(RGBGFX) -f -o $@ $<
+
+res/sgb_border_tilemap.bin: res/sgb_border_tilemap.toobfuscate src/tools/obfuscate.py
+	@$(MKDIR_P) $(@D)
+	$(PY) src/tools/obfuscate.py $< $@
 
 ###############################################
 #                                             #

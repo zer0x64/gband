@@ -4,7 +4,7 @@ ENDM
 
 BorderPalettes:
     INCBIN "res/sgb_border_tilemap.bin"
-    
+.endTileMap
     ds $100
     
     RGB 30,29,29 ; PAL_SGB1
@@ -30,6 +30,10 @@ BorderPalettes:
 .end
 
 SGBBorderGraphics:
+    INCBIN "res/background_tiles.bin"
+.end
+
+SGBBorderGraphicsAscii:
     INCBIN "res/ascii_tiles.bin"
 .end
 
