@@ -137,6 +137,7 @@ MenuMoveCursor:
 HandleAPress:
     ; Check if all buttons are pressed at once.
     ; This will help the bot get too the serial state faster
+    and %1111
     xor %1111
     jr z, :++
 
