@@ -64,7 +64,7 @@ RunGame::
     ld [shadowOAM + 1], a 
     
     ; Character default tile index
-    ld a, $1
+    ld a, 0
     ld [shadowOAM + 2], a
 
     ; character palette and attribute
@@ -87,7 +87,7 @@ RunGame::
     call CalculateScroll
 
     ; This calculate the sprite position on the screen
-    ; Normally the sprite will be at the center oof the screen,
+    ; Normally the sprite will be at the center of the screen,
     ;   but if there's a scroll lock the sprite can move around freely
     call CalculateSpriteScreenPosition
 
@@ -99,6 +99,7 @@ RunGame::
     ld a, [waitForFrame]
     cp a, 0
     jr nz, .waitForFrame
+
     jr .loop
 
 MoveCharacter:
@@ -209,7 +210,7 @@ CalculateScroll:
     ret
 
 CalculateSpriteScreenPosition:
-    ; We start by calculatiing the X position
+    ; We start by calculating the X position
     ld a, [shadowScrollX]
     cp 0
     jr z, :+
