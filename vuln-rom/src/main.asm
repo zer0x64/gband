@@ -7,6 +7,12 @@ CHARACTER_SCREEN_POSITION_Y = 72 + 16
 CHARACTER_DEFAULT_POSITION_X = 128
 CHARACTER_DEFAULT_POSITION_Y = 112
 
+; The direction the character faces
+CHARACTER_DIRECTION_DOWN = $00
+CHARACTER_DIRECTION_RIGHT = $10
+CHARACTER_DIRECTION_LEFT = $20
+CHARACTER_DIRECTION_UP = $30
+
 MAX_SCROLL_X = 256 - 160
 MAX_SCROLL_Y = 256 - 144
 
@@ -34,6 +40,10 @@ RunGame::
 
     ld a, CHARACTER_DEFAULT_POSITION_Y
     ld [characterPositionY], a
+
+    ; Character starts facing down
+    ld a, CHARACTER_DIRECTION_DOWN
+    ld [characterDirection], a
 
     ; Copy the tile map
     ld de, mapTileMap
@@ -69,7 +79,7 @@ RunGame::
     ld [shadowOAM + 1], a 
     
     ; Character default tile index
-    ld a, 0
+    ld a, CHARACTER_DIRECTION_DOWN
     ld [shadowOAM + 2], a
 
     ; character palette and attribute
@@ -87,6 +97,8 @@ RunGame::
 
     ; We move the character according to the inputs
     call MoveCharacter
+
+    call ChangeCharacterDirection
 
     ; This calculate the screen scroll
     call CalculateScroll
@@ -121,10 +133,14 @@ MoveCharacter:
 :
     ; Right
     ld b, $01
+    ld a, CHARACTER_DIRECTION_RIGHT
+    ld [characterDirection], a
     jr :++
 :
     ; Left
     ld b, $FF
+    ld a, CHARACTER_DIRECTION_LEFT
+    ld [characterDirection], a
     jr :+
 :
     ; Apply X movement
@@ -162,10 +178,14 @@ MoveCharacter:
 :
     ; Up
     ld b, $FF
+    ld a, CHARACTER_DIRECTION_UP
+    ld [characterDirection], a
     jr :++
 :
     ; Down
     ld b, $01
+    ld a, CHARACTER_DIRECTION_DOWN
+    ld [characterDirection], a
     jr :+
 :
     ld a, [characterPositionY]
@@ -187,6 +207,13 @@ MoveCharacter:
 
     ld a, [localVariables]
     ld [characterPositionY], a
+
+    ret
+
+ChangeCharacterDirection:
+    ; Here we change the direction the character is facing
+    ld a, [characterDirection]
+    ld [shadowOAM + 2], a
 
     ret
 

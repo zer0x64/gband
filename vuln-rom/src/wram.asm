@@ -42,6 +42,7 @@ characterPositionX::
 characterPositionY::
 menuState::
     DB
+characterDirection::
 menuInputLength::
     DB
 menuInput::
