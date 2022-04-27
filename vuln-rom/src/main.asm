@@ -20,9 +20,17 @@ MAP_ENTITY_EMPTY = 0
 MAP_ENTITY_SOLID = 1
 MAP_ENTITY_NPC = 2
 MAP_ENTITY_FLAG = 3
+MAP_ENTITY_CHICKEN = 4
+
+MAP_STATE_RUNNING = 0
+MAP_STATE_TALKING = 1
+MAP_STATE_NPC = 2
+MAP_STATE_EXITING = 3
 
 ; The character hitbox size is 4x4
 HITBOX_SIZE = 6
+
+INTERACTION_RANGE = 8
 
 SECTION FRAGMENT "Game Loop", ROMX
 RunGame::
@@ -70,6 +78,10 @@ RunGame::
     ld [rVBK], a
 .skipAttributeCopy
 
+    ; Load game state
+    ld a, MAP_STATE_RUNNING
+    ld [mapState], a
+
     ; Character Y
     ld a, CHARACTER_SCREEN_POSITION_Y
     ld [shadowOAM], a
@@ -92,12 +104,27 @@ RunGame::
     ei
 
 .loop:
+    ; We check the map state to decide what to do
+    ld a, [mapState]
+
+    cp MAP_STATE_RUNNING
+    jr z, .mainLoop
+
+    cp MAP_STATE_EXITING
+    jr z, .exit
+.exit
+    ; Turn PPU off and exit
+    xor a
+    ld [rLCDC], a
+    ret
+.mainLoop
     ; We update the joypad state
     call ReadJoypad
 
     ; We move the character according to the inputs
     call MoveCharacter
 
+    ; We change the character direction to match the inputs
     call ChangeCharacterDirection
 
     ; This calculate the screen scroll
@@ -107,6 +134,9 @@ RunGame::
     ; Normally the sprite will be at the center of the screen,
     ;   but if there's a scroll lock the sprite can move around freely
     call CalculateSpriteScreenPosition
+
+    ; Check if there is an interaction to process
+    call CheckInteraction
 
     ; Lock so we wait for the frame to end
     ld a, 1
@@ -423,6 +453,86 @@ CheckCollision:
 
 .break
     ld a, 1
+    ret
+
+; Checks if the player presses A on an interactable tile
+CheckInteraction::
+    ; We handle the buttons first
+    ld a, [joypadButtons]
+    ld b, a
+    ld a, [joypadButtonsOld]
+
+    call GetNewlyPushedButtons
+
+    ; We only check for the a button
+    bit 0, a
+    ; We immediately return if a is not newly pressed
+    ret z
+
+    ld a, [characterDirection]
+    and %00110000
+    cp a, CHARACTER_DIRECTION_LEFT
+    jr z, .facingLeft
+    cp a, CHARACTER_DIRECTION_RIGHT
+    jr z, .facingRight
+    cp a, CHARACTER_DIRECTION_UP
+    jr z, .facingUp
+    cp a, CHARACTER_DIRECTION_DOWN
+    jr z, .facingDown
+
+    ; Load the Y offset in d and the X offset in e
+.facingLeft
+    ld d, 0
+    ld e, -INTERACTION_RANGE
+    jr .checkInteraction
+.facingRight
+    ld d, 0
+    ld e, INTERACTION_RANGE
+    jr .checkInteraction
+.facingUp
+    ld d, -INTERACTION_RANGE
+    ld e, 0
+    jr .checkInteraction
+.facingDown
+    ld d, INTERACTION_RANGE
+    ld e, 0
+    jr .checkInteraction
+.checkInteraction
+    ; Compute the Y position to check
+    ld a, [characterPositionY]
+    add d
+    ld d, a
+
+    ; Compute the X position to check
+    ld a, [characterPositionX]
+    add e
+    ld e, a
+
+    ; Get the tile value
+    call GetLogicTile
+
+    cp MAP_ENTITY_FLAG
+    jr z, .handleFlagInteraction
+
+    cp MAP_ENTITY_CHICKEN
+    jr z, .handleChickenInteraction
+
+    cp MAP_ENTITY_NPC
+    jr z, .handleNpcInteraction
+
+    ; Other tiles don't do anything when interacted with
+    ret
+
+.handleFlagInteraction
+.handleChickenInteraction
+.handleNpcInteraction
+    ; Return to menu for testing
+    ld a, GAMESTATE_INPUT_MENU
+    ld [gameState], a
+    
+    ld a, MAP_STATE_EXITING
+    ld [mapState], a
+
     ret
 
 ; Check if the point collides with a solid object

@@ -45,6 +45,7 @@ menuState::
 characterDirection::
 menuInputLength::
     DB
+mapState::
 menuInput::
     DS $20
 wStack::
