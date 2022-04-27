@@ -10,8 +10,13 @@ CHARACTER_DEFAULT_POSITION_Y = 112
 MAX_SCROLL_X = 256 - 160
 MAX_SCROLL_Y = 256 - 144
 
+MAP_ENTITY_EMPTY = 0
+MAP_ENTITY_SOLID = 1
+MAP_ENTITY_NPC = 2
+MAP_ENTITY_FLAG = 3
+
 ; The character hitbox size is 4x4
-HITBOX_SIZE = 4
+HITBOX_SIZE = 6
 
 SECTION FRAGMENT "Game Loop", ROMX
 RunGame::
@@ -125,8 +130,25 @@ MoveCharacter:
     ; Apply X movement
     ld a, [characterPositionX]
     add a, b
+
+    ; Store the value
+    ld [localVariables], a
+
+    ; We check if the new position is valid
+    ld e, a
+    ld a, [characterPositionY]
+    ld d, a
+
+    call CheckCollision
+
+    ; If the tile is not valid, we don't commit the new position
+    cp 0
+    jr nz, .y_movement
+
+    ld a, [localVariables]
     ld [characterPositionX], a
 
+.y_movement
     ; Check Y movement
     ld a, [joypadDpad]
 
@@ -148,6 +170,22 @@ MoveCharacter:
 :
     ld a, [characterPositionY]
     add a, b
+
+    ; Store the value
+    ld [localVariables], a
+
+    ; We check if the new position is valid
+    ld d, a
+    ld a, [characterPositionX]
+    ld e, a
+
+    call CheckCollision
+
+    ; If the tile is not valid, we don't commit the new position
+    cp 0
+    ret nz
+
+    ld a, [localVariables]
     ld [characterPositionY], a
 
     ret
@@ -265,6 +303,142 @@ CalculateSpriteScreenPosition:
     jr .loadY
 .loadY
     ld [shadowOAM], a
+    ret
+
+; Check if the point collides with a solid object
+; @param d Y position of the point to check
+; @param e X position oof the point to check
+; returns a == 0 if the player can move there
+CheckCollision:
+    ; Check top left
+    ld h, d
+    ld l, e
+
+    ld a, d
+    sub HITBOX_SIZE / 2
+    ld d, a
+
+    ld a, e
+    sub HITBOX_SIZE / 2
+    ld e, a
+
+    push hl
+    call GetLogicTile
+    pop hl
+
+    ; If a is not zero, break
+    cp MAP_ENTITY_EMPTY
+    jr nz, .break
+
+    ; Check bottom left
+    ld d, h
+    ld e, l
+
+    ld a, d
+    add HITBOX_SIZE / 2
+    ld d, a
+
+    ld a, e
+    sub HITBOX_SIZE / 2
+    ld e, a
+
+    push hl
+    call GetLogicTile
+    pop hl
+
+    ; If a is not zero, break
+    cp MAP_ENTITY_EMPTY
+    jr nz, .break
+
+    ; Check top right
+    ld d, h
+    ld e, l
+
+    ld a, d
+    sub HITBOX_SIZE / 2
+    ld d, a
+
+    ld a, e
+    add HITBOX_SIZE / 2
+    ld e, a
+
+    push hl
+    call GetLogicTile
+    pop hl
+
+    ; If a is not zero, break
+    cp MAP_ENTITY_EMPTY
+    jr nz, .break
+
+    ; Check bottom right
+    ld d, h
+    ld e, l
+
+    ld a, d
+    add HITBOX_SIZE / 2
+    ld d, a
+
+    ld a, e
+    add HITBOX_SIZE / 2
+    ld e, a
+
+    push hl
+    call GetLogicTile
+    pop de
+
+    ; If a is not zero, break
+    cp MAP_ENTITY_EMPTY
+    jr nz, .break
+
+    ; Every checks has passed, return 1
+    xor a
+    ret
+
+.break
+    ld a, 1
+    ret
+
+; Check if the point collides with a solid object
+; @param d Y position of the point to check
+; @param e X position oof the point to check
+; returns a The enum value of the object
+GetLogicTile:
+    ; Divides each componnents by 8 to remove subpixels
+    ld a, d
+    and a, %11111000
+    ld d, a
+
+    ; Adresses are on 10 bits, 5 for X and 5 for Y
+    ; The 5 X bits are the lower 5 bits of tthe lower register(e in the case of de)
+    srl e
+    srl e
+    srl e
+
+    ; The 5 bits of Y are a bit more complicated:
+    ; The 3 lower bits of y are the 3 higher bits of e...
+    sla a
+    sla a
+    or e
+
+    ld e, a
+
+    ; ... while the 2 higher bits of y are the 2 lower bits of d
+    ld a, d
+    srl a
+    srl a
+    srl a
+    srl a
+    srl a
+    srl a
+    ld d, a
+
+    ; We load the logic map address and add the calculated offset
+    ld hl, mapLogic
+    add hl, de
+
+    ; We fetch the logic byte
+    ld a, [hl]
+
     ret
 
 SECTION FRAGMENT "Game Loop", ROMX, ALIGN[8]
