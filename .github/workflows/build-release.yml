@@ -1,0 +1,70 @@
+# Based on https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
+#
+# While our "example" application has the platform-specific code,
+# for simplicity we are compiling and testing everything on the Ubuntu environment only.
+# For multi-OS testing see the `cross.yml` workflow.
+
+on: [workflow_dispatch]
+
+name: Release Builds
+
+jobs:
+  build_release_linux:
+    name: Release Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get clean && sudo apt-get update
+          sudo apt-get install libudev-dev
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --features "gamepad"
+      
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v3
+        with:
+          name: gband-wgpu-linux
+          path: target/release/gband-wgpu
+
+  build_release_windows:
+    name: Release Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --features "gamepad" --target x86_64-pc-windows-msvc
+      
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v3
+        with:
+          name: gband-wgpu-windows
+          path: target/x86_64-pc-windows-msvc/release/gband-wgpu.exe
