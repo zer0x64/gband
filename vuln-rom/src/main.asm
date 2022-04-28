@@ -245,6 +245,48 @@ ChangeCharacterDirection:
     ld a, [characterDirection]
     ld [shadowOAM + 2], a
 
+    ; mask so I just get the direction and not the bits for the animation cycle
+    and %00110000
+
+    ; check if pressing up
+    cp CHARACTER_DIRECTION_UP
+    jr z, :+
+
+    ; check if pressing down
+    cp CHARACTER_DIRECTION_DOWN
+    jr z, :++
+
+    jr .resetFlip
+    
+: ; if pressing up
+    ld a, [joypadDpad]
+
+    ; check if also pressing right
+    bit 0, a
+    jr z, .applyFlip
+
+    jr .resetFlip
+
+: ; if pressing down
+    ld a, [joypadDpad]
+    
+    ; check if also pressing left
+    bit 1, a
+    jr z, .applyFlip
+
+    jr .resetFlip
+.applyFlip
+    ld a, [shadowOAM + 3]
+    set 5, a
+    jr .applyNewDirection
+
+.resetFlip
+    ld a, [shadowOAM + 3]
+    res 5, a
+
+.applyNewDirection
+    ld [shadowOAM + 3], a
+
     ret
 
 CalculateScroll:
