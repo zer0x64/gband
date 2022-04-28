@@ -32,6 +32,9 @@ HITBOX_SIZE = 6
 
 INTERACTION_RANGE = 8
 
+; How many frames pass between each frame of walk cycle animation
+WALK_ANIMATION_SPEED = 8
+
 SECTION FRAGMENT "Game Loop", ROMX
 RunGame::
     ; Disable the PPU
@@ -52,6 +55,8 @@ RunGame::
     ; Character starts facing down
     ld a, CHARACTER_DIRECTION_DOWN
     ld [characterDirection], a
+
+    ld [animationCycleTimer], a
 
     ; Copy the tile map
     ld de, mapTileMap
@@ -127,6 +132,13 @@ RunGame::
     ; We change the character direction to match the inputs
     call ChangeCharacterDirection
 
+    ; We update the character's animation cycle
+    call SetAnimationCycle
+
+    ; We load the character sprite
+    ld a, [characterDirection]
+    ld [shadowOAM + 2], a
+
     ; This calculate the screen scroll
     call CalculateScroll
 
@@ -163,13 +175,17 @@ MoveCharacter:
 :
     ; Right
     ld b, $01
-    ld a, CHARACTER_DIRECTION_RIGHT
+    ld a, [characterDirection]
+    and %00001111
+    or CHARACTER_DIRECTION_RIGHT
     ld [characterDirection], a
     jr :++
 :
     ; Left
     ld b, $FF
-    ld a, CHARACTER_DIRECTION_LEFT
+    ld a, [characterDirection]
+    and %00001111
+    or CHARACTER_DIRECTION_LEFT
     ld [characterDirection], a
     jr :+
 :
@@ -208,13 +224,17 @@ MoveCharacter:
 :
     ; Up
     ld b, $FF
-    ld a, CHARACTER_DIRECTION_UP
+    ld a, [characterDirection]
+    and %00001111
+    or CHARACTER_DIRECTION_UP
     ld [characterDirection], a
     jr :++
 :
     ; Down
     ld b, $01
-    ld a, CHARACTER_DIRECTION_DOWN
+    ld a, [characterDirection]
+    and %00001111
+    or CHARACTER_DIRECTION_DOWN
     ld [characterDirection], a
     jr :+
 :
@@ -287,6 +307,63 @@ ChangeCharacterDirection:
 .applyNewDirection
     ld [shadowOAM + 3], a
 
+    ret
+
+SetAnimationCycle:
+    ld a, [joypadDpad]
+    ld b, %00001111
+    and b
+    
+    ; if no inputs, reset animation cycle
+    cp b
+    jr z, .resetCycle
+
+    ; check if the timer is ellapsed
+    ld a, [animationCycleTimer]
+    cp WALK_ANIMATION_SPEED
+    jr c, :+
+    jr z, :++
+
+    ; this means it incremented over the timer limit somehow... reset
+    jr .resetCycle
+
+: ; timer not ellapsed, increment by 1
+    inc a
+    ld [animationCycleTimer], a
+
+    ret
+: ; timer ellapsed, change to next frame of animation
+    ; reset timer
+    ld a, 0
+    ld [animationCycleTimer], a
+
+    ; we change bit 1 so it switches to the other frame of animation
+    ld a, [characterDirection]
+    xor $01
+    ld [characterDirection], a
+
+    and $01
+
+    cp $00
+    jr z, :+
+
+    ret
+    
+: ; back to frame 0 of animation. switch leg
+    ld a, [characterDirection]
+    xor %00001000
+    ld [characterDirection], a
+
+    ret
+
+.resetCycle
+    ld a, $00
+    ld [animationCycleTimer], a
+
+    ld a, [characterDirection]
+    and %11110000
+    ld [characterDirection], a
+    
     ret
 
 CalculateScroll:

@@ -42,6 +42,8 @@ characterPositionX::
 characterPositionY::
 menuState::
     DB
+animationCycleTimer::
+    DB
 characterDirection::
 menuInputLength::
     DB
