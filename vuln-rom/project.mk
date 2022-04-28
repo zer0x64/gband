@@ -58,6 +58,9 @@ FIXFLAGS += -c
 # Super Game Boy compatible
 FIXFLAGS += -s
 
+# Trash the nintendo logo
+FIXFLAGS += -f Lhg
+
 # Game Boy mode
 # LDFLAGS += -d
 
