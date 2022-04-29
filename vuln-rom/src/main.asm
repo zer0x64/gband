@@ -45,6 +45,15 @@ RunGame::
     ld [shadowScrollX], a
     ld [shadowScrollY], a
 
+    ; We start with the window off
+    ld [shadowWindow], a
+
+    ; We set the window position
+    ld a, 7
+    ld [rWX], a
+    ld a, 144 - 40
+    ld [rWY], a
+
     ; Sets the default position of the character
     ld a, CHARACTER_DEFAULT_POSITION_X
     ld [characterPositionX], a
@@ -64,6 +73,12 @@ RunGame::
     ld bc, mapTileMap.end - mapTileMap
     call CopyToVRAM
 
+    ; Copy the window tile map
+    ld de, mapWindowTileMap
+    ld hl, _SCRN1
+    ld bc, mapWindowTileMap.end - mapWindowTileMap
+    call CopyToVRAM
+
     ld a, [isCgb]
     cp 1
     jr nz, .skipAttributeCopy
@@ -76,6 +91,12 @@ RunGame::
     ld de, mapAttributes
     ld hl, _SCRN0
     ld bc, mapAttributes.end - mapAttributes
+    call CopyToVRAM
+
+    ; GDMA the window attribute map
+    ld de, mapWindowAttributes
+    ld hl, _SCRN1
+    ld bc, mapWindowAttributes.end - mapWindowAttributes
     call CopyToVRAM
 
     ; Reset VRAM bank
@@ -117,11 +138,55 @@ RunGame::
 
     cp MAP_STATE_EXITING
     jr z, .exit
+
+    cp MAP_STATE_TALKING
+    jr z, .talking
+
+    cp MAP_STATE_NPC
+    jr z, .talkingToNpc
 .exit
     ; Turn PPU off and exit
     xor a
     ld [rLCDC], a
     ret
+.talking
+    ; We update the joypad state
+    call ReadJoypad
+
+    ; We check if a has newly been pressed
+    ld a, [joypadButtons]
+    ld b, a
+    ld a, [joypadButtonsOld]
+
+    call GetNewlyPushedButtons
+
+    and a, %11
+    cp 0
+
+    jr z, :+
+
+    ; A or B has been pressed, exit the state
+    ld a, MAP_STATE_RUNNING
+    ld [mapState], a
+
+    ; Disable the window
+    ld a, 0
+    ld [shadowWindow], a
+
+:
+    jr .render
+.talkingToNpc
+    ; TODO: Actually handle this
+    ld a, MAP_STATE_EXITING
+    ld [mapState], a
+
+    ld a, GAMESTATE_SERIAL
+    ld [gameState], a
+
+    xor a
+    ld [shadowWindow], a
+
+    jr .render
 .mainLoop
     ; We update the joypad state
     call ReadJoypad
@@ -150,6 +215,7 @@ RunGame::
     ; Check if there is an interaction to process
     call CheckInteraction
 
+.render
     ; Lock so we wait for the frame to end
     ld a, 1
     ld [waitForFrame], a;
@@ -159,6 +225,8 @@ RunGame::
     cp a, 0
     jr nz, .waitForFrame
 
+    ; Print window
+    call DrawWindow
     jr .loop
 
 MoveCharacter:
@@ -644,14 +712,23 @@ CheckInteraction::
 
 .handleFlagInteraction
 .handleChickenInteraction
-.handleNpcInteraction
-    ; Return to menu for testing
-    ld a, GAMESTATE_INPUT_MENU
-    ld [gameState], a
-    
-    ld a, MAP_STATE_EXITING
+    ld a, MAP_STATE_TALKING
     ld [mapState], a
 
+    ; We show the window
+    ld a, 1
+    ld [shadowWindow], a
+
+    ret
+
+.handleNpcInteraction
+    ld a, MAP_STATE_NPC
+    ld [mapState], a
+
+    ; We show the window
+    ld a, 1
+    ld [shadowWindow], a
+    
     ret
 
 ; Check if the point collides with a solid object
@@ -697,6 +774,25 @@ GetLogicTile:
 
     ret
 
+DrawWindow:
+    ld a, [shadowWindow]
+    cp 0
+    jr z, .windowOff
+
+    ; Turn window on
+    ld a, [rLCDC]
+    set 5, a
+    ld [rLCDC], a
+
+    ret
+
+.windowOff
+    ; Turn window off
+    ld a, [rLCDC]
+    res 5, a
+    ld [rLCDC], a
+    ret
+
 SECTION FRAGMENT "Game Loop", ROMX, ALIGN[8]
 mapTileMap:
 INCBIN "res/map_tilemap.bin"
@@ -708,4 +804,12 @@ INCBIN "res/map_attributes.bin"
 
 mapLogic:
 INCBIN "res/map_logic.bin"
+.end
+
+mapWindowTileMap:
+INCBIN "res/map_window_tilemap.bin"
+.end
+
+mapWindowAttributes:
+INCBIN "res/map_window_attributes.bin"
 .end

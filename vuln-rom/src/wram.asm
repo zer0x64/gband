@@ -54,10 +54,12 @@ wStack::
 	ds STACK_SIZE   ; Define a stack here. I make sure it's after "localVariables" so a buffer overflow can overwrite a function pointer here
 wStackBottom::
 
-SECTION "Shadow Scroll", WRAM0
+SECTION "Shadow", WRAM0
 shadowScrollX::
     DB
 shadowScrollY::
+    DB
+shadowWindow::
     DB
 
 SECTION UNION "Shadow OAM", WRAM0, ALIGN[8]
