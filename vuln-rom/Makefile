@@ -19,10 +19,10 @@ ifneq ($(strip $(shell which rm)),)
     # POSIX OSes
     RM_RF := rm -rf
     MKDIR_P := mkdir -p
-	PY := python
+	PY := python3
 else
     # Windows
-	PY := python
+	PY := python3
     RM_RF := -del /q
     MKDIR_P := -mkdir
 endif
