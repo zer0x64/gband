@@ -50,6 +50,8 @@ mapState::
     DB
 menuInputLength::
     DB
+npcCursorPosition::
+    DB
 menuInput::
 textboxText::
     DS $24

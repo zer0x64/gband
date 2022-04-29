@@ -29,6 +29,8 @@ MAP_STATE_EXITING = 3
 
 TEXTBOX_LINE_LENGTH = 18
 
+DEFAULT_NPC_CURSOR_POSITION = $6B
+
 ; The character hitbox size is 4x4
 HITBOX_SIZE = 6
 
@@ -71,6 +73,9 @@ RunGame::
     ld [characterDirection], a
 
     ld [animationCycleTimer], a
+
+    ld a, DEFAULT_NPC_CURSOR_POSITION
+    ld [npcCursorPosition], a
 
     ; Copy the tile map
     ld de, mapTileMap
@@ -181,15 +186,8 @@ RunGame::
 :
     jr .render
 .talkingToNpc
-    ; TODO: Actually handle this
-    ld a, MAP_STATE_EXITING
-    ld [mapState], a
-
-    ld a, GAMESTATE_SERIAL
-    ld [gameState], a
-
-    xor a
-    ld [shadowWindow], a
+    ; interaction with serial NPC
+    call NpcInteraction
 
     jr .render
 .mainLoop
@@ -229,7 +227,7 @@ RunGame::
     ld a, [waitForFrame]
     cp a, 0
     jr nz, .waitForFrame
-
+ 
     ; Print window
     call DrawWindow
     jr .loop
@@ -436,6 +434,75 @@ SetAnimationCycle:
     ld a, [characterDirection]
     and %11110000
     ld [characterDirection], a
+    
+    ret
+
+NpcInteraction:
+    ; We update the joypad state
+    call ReadJoypad
+
+    ; We check newly pressed buttons
+    ld a, [joypadButtons]
+    ld b, a
+    ld a, [joypadButtonsOld]
+
+    call GetNewlyPushedButtons
+
+    bit 1, a
+    jr nz, :++
+    bit 0, a
+    jr nz, :+
+
+    ; now check newly pressed dpad inputs
+    ld a, [joypadDpad]
+    ld b, a
+    ld a, [joypadDpadOld]
+
+    call GetNewlyPushedButtons
+
+    ; we check if left or right are pressed
+    and %00000011
+    cp 0
+
+    ret z
+
+    ld a, [npcCursorPosition]
+    xor %00001000
+    ld [npcCursorPosition], a
+    
+    ret
+
+: ; A pressed
+    ld a, [npcCursorPosition]
+
+    cp DEFAULT_NPC_CURSOR_POSITION ; here I kinda just assume the default is No...
+    jr nz, :++
+
+: ; No selected (or B pressed), exiting dialog
+    ld a, MAP_STATE_RUNNING
+    ld [mapState], a
+    
+    ; Disable the window
+    ld a, 0
+    ld [shadowWindow], a
+
+    ; reset cursor position for next time
+    ld a, DEFAULT_NPC_CURSOR_POSITION
+    ld [npcCursorPosition], a
+
+    ret
+
+: ; Yes selected, confirmed dialog
+    call ClearTextboxText
+
+    ld a, MAP_STATE_EXITING
+    ld [mapState], a
+
+    ld a, GAMESTATE_SERIAL
+    ld [gameState], a
+
+    xor a
+    ld [shadowWindow], a
     
     ret
 
@@ -836,6 +903,34 @@ DrawWindow:
     ld bc, TEXTBOX_LINE_LENGTH
     call MemCpy
 
+    ; Check if we're talking to the NPC for the 3rd line
+    ld a, [mapState]
+    cp MAP_STATE_NPC
+    jr z, :+
+    
+    ; Not talking to NPC
+    ; Clear the yes/no text
+    xor a
+    ld hl, _SCRN1 + $61
+    ld bc, TEXTBOX_LINE_LENGTH
+    call MemSet
+
+    ret
+: ; talking to NPC
+    ld de, yesNoText
+    ld hl, _SCRN1 + $61
+    ld bc, yesNoText.end - yesNoText
+    call MemCpy
+
+    ; place cursor in NPS window
+    ld a, [npcCursorPosition]
+    ld hl, _SCRN1
+    ld l, a
+
+    ; cursor tile index
+    ld a, $91
+    ld [hl], a
+
     ret
 
 .windowOff
@@ -860,6 +955,10 @@ DB "poc poc", $01
 
 npcText:
 DB "Connect to the    other side?"
+.end
+
+yesNoText:
+DB "    yes     no"
 .end
 
 SECTION FRAGMENT "Game Loop", ROMX, ALIGN[8]
