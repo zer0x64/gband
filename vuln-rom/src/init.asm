@@ -533,9 +533,9 @@ LoadSaveData:
     
     ; Copy the name and flag to RAM
     ld a, [playerNameLengthSram]
-    ld [playerNameLengthSram], a
+    ld [playerNameLengthRam], a
     ld a, [flagLengthSram]
-    ld [flagLengthSram], a
+    ld [flagLengthRam], a
 
     ld de, playerNameSram
     ld hl, playerNameRam

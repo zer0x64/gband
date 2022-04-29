@@ -45,11 +45,15 @@ menuState::
 animationCycleTimer::
     DB
 characterDirection::
-menuInputLength::
     DB
 mapState::
+    DB
+menuInputLength::
+    DB
 menuInput::
-    DS $20
+textboxText::
+    DS $24
+.end::
 wStack::
 	ds STACK_SIZE   ; Define a stack here. I make sure it's after "localVariables" so a buffer overflow can overwrite a function pointer here
 wStackBottom::

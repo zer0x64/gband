@@ -27,6 +27,8 @@ MAP_STATE_TALKING = 1
 MAP_STATE_NPC = 2
 MAP_STATE_EXITING = 3
 
+TEXTBOX_LINE_LENGTH = 18
+
 ; The character hitbox size is 4x4
 HITBOX_SIZE = 6
 
@@ -47,6 +49,9 @@ RunGame::
 
     ; We start with the window off
     ld [shadowWindow], a
+
+    ; We set the textbox text to be empty
+    call ClearTextboxText
 
     ; We set the window position
     ld a, 7
@@ -711,6 +716,25 @@ CheckInteraction::
     ret
 
 .handleFlagInteraction
+    ld a, MAP_STATE_TALKING
+    ld [mapState], a
+
+    ; We show the window
+    ld a, 1
+    ld [shadowWindow], a
+
+    ; We clear the textbox string
+    call ClearTextboxText
+
+    ; We put the chicken text in
+    ld de, flagRam
+    ld hl, textboxText
+    ld b, 0
+    ld a, [flagLengthRam]
+    ld c, a
+    call MemCpy
+    
+    ret
 .handleChickenInteraction
     ld a, MAP_STATE_TALKING
     ld [mapState], a
@@ -718,6 +742,15 @@ CheckInteraction::
     ; We show the window
     ld a, 1
     ld [shadowWindow], a
+
+    ; We clear the textbox string
+    call ClearTextboxText
+
+    ; We put the chicken text in
+    ld de, chickenText
+    ld hl, textboxText
+    ld bc, chickenText.end - chickenText
+    call MemCpy
 
     ret
 
@@ -728,6 +761,15 @@ CheckInteraction::
     ; We show the window
     ld a, 1
     ld [shadowWindow], a
+
+    ; We clear the textbox string
+    call ClearTextboxText
+
+    ; We put the chicken text in
+    ld de, npcText
+    ld hl, textboxText
+    ld bc, npcText.end - npcText
+    call MemCpy
     
     ret
 
@@ -784,6 +826,16 @@ DrawWindow:
     set 5, a
     ld [rLCDC], a
 
+    ; We draw the two lines of text on the window
+    ld de, textboxText
+    ld hl, _SCRN1 + $21
+    ld bc, TEXTBOX_LINE_LENGTH
+    call MemCpy
+
+    ld hl, _SCRN1 + $41
+    ld bc, TEXTBOX_LINE_LENGTH
+    call MemCpy
+
     ret
 
 .windowOff
@@ -792,6 +844,23 @@ DrawWindow:
     res 5, a
     ld [rLCDC], a
     ret
+
+ClearTextboxText:
+    ; We set the textbox text to be empty
+    xor a
+    ld hl, textboxText
+    ld bc, textboxText.end - textboxText
+    call MemSet
+
+    ret
+
+chickenText:
+DB "poc poc", $01
+.end
+
+npcText:
+DB "Connect to the    other side?"
+.end
 
 SECTION FRAGMENT "Game Loop", ROMX, ALIGN[8]
 mapTileMap:
