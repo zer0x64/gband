@@ -32,19 +32,97 @@ impl Component for App {
             AppMessage::RomFile(file)
         });
 
-        if let Some(rom) = self.rom.clone() {
-            html! {
-                <div>
-                    <Emulator {rom} />
-                    <input type="file" {onchange} />
+        html! {
+            <>
+            <div class="container">
+                <header class="py-3">
+                    <div class="row flex-nowrap justify-content-between align-items-center">
+                        <div class="col-4 text-center">
+                            <a class="header-logo text-dark" href="#">{ "Gband emulator" }</a>
+                        </div>
+                    </div>
+                </header>
+
+                <header class="py-3">
+                    <div class="row flex-nowrap justify-content-between align-items-center">
+                        <div class="col-4 text-center">
+                            <a class="logo text-dark" href="#livedemo">{ "Live demo" }</a>
+                        </div>
+                    </div>
+                </header>
+            </div>
+
+            <main class="container">
+                <h1 id="introduction">{ "Introduction" }</h1>
+
+                <p>{ "Welcome to the GBand homepage!" }</p>
+
+                <p>{ "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum." }</p>
+
+                <h1 id="livedemo">{ "Live demo" }</h1>
+
+                <div class="row">
+                    <div class="col-8">
+                    {
+                        if let Some(rom) = self.rom.clone() {
+                            html! { <Emulator {rom} /> }
+                        } else {
+                            html! { <p>{ "Choose a ROM and try directly in your browser." }</p> }
+                        }
+                    }
+                    </div>
+
+                    <div class="col">
+                        <p>{ "ROM to load: "} <input type="file" {onchange} /></p>
+
+                        <h3>{ "Controls" }</h3>
+
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">{ "Key" }</th>
+                                    <th scope="col">{ "Joypad" }</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <th><kbd>{ "←" }</kbd></th>
+                                    <th><kbd>{ "←" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "→" }</kbd></th>
+                                    <th><kbd>{ "→" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "↑" }</kbd></th>
+                                    <th><kbd>{ "↑" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "↓" }</kbd></th>
+                                    <th><kbd>{ "↓" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "X" }</kbd></th>
+                                    <th><kbd>{ "A" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "Z" }</kbd></th>
+                                    <th><kbd>{ "B" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "S" }</kbd></th>
+                                    <th><kbd>{ "START" }</kbd></th>
+                                </tr>
+                                <tr>
+                                    <th><kbd>{ "A" }</kbd></th>
+                                    <th><kbd>{ "SELECT" }</kbd></th>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            }
-        } else {
-            html! {
-                <div>
-                    <input type="file" {onchange} />
-                </div>
-            }
+            </main>
+            </>
         }
     }
 

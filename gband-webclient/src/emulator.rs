@@ -48,14 +48,15 @@ impl Component for Emulator {
         let onkeyup = ctx.link().callback(EmulatorMessage::KeyUp);
 
         html! {
-            <div onkeydown={onkeydown} onkeyup={onkeyup} tabIndex="0">
-                <canvas width="160" height="144" style="height:50vh;
-                image-rendering: pixelated;
-                image-rendering: crisp-edges;
-                image-rendering: -moz-crisp-edges;
-                image-rendering: -o-crisp-edges;
-                image-rendering: -webkit-crisp-edges;
-                -ms-interpolation-mode: nearest-neighbor;" ref={self.canvas.clone()}></canvas>
+            <div {onkeydown} {onkeyup} tabIndex="0">
+                <canvas ref={self.canvas.clone()} width="160" height="144" style="width:100%;
+                    image-rendering: pixelated;
+                    image-rendering: crisp-edges;
+                    image-rendering: -moz-crisp-edges;
+                    image-rendering: -o-crisp-edges;
+                    image-rendering: -webkit-crisp-edges;
+                    -ms-interpolation-mode: nearest-neighbor;"
+                ></canvas>
             </div>
         }
     }
