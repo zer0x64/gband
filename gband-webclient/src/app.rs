@@ -65,7 +65,24 @@ impl Component for App {
                     </div>
 
                     <div class="col">
-                        <p>{ "ROM to load: "} <input type="file" {onchange} /></p>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th scope="col"></th>
+                                    <th scope="col">{ "Select a ROM" }</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <th>{ "Your own" }</th>
+                                    <th><input type="file" {onchange} /></th>
+                                </tr>
+                                <tr>
+                                    <th>{ "Sample" }</th>
+                                    <th>{ "TODO" }</th>
+                                </tr>
+                            </tbody>
+                        </table>
 
                         <h3>{ "Controls" }</h3>
                         <h4>{ "You can also use a controller!" }</h4>
@@ -108,6 +125,49 @@ impl Component for App {
                                 <tr>
                                     <th><kbd>{ "A" }</kbd></th>
                                     <th><kbd>{ "SELECT" }</kbd></th>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <h1 id="livedemo">{ "Downloads" }</h1>
+
+                <div class="row">
+                    <div class="col">
+                        <h3>{ "GBAND Emulator" }</h3>
+                        <table class="table">
+                            <tbody>
+                                <tr>
+                                    <th><a class="btn btn-primary" href="#" role="button">{ "Windows x64" }</a></th>
+                                    <th><a class="btn btn-primary" href="#" role="button">{ "Linux x64" }</a></th>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h3>{ "Try our new game!" }</h3>
+                        <p><a class="btn btn-danger" href="#" role="button">{ "Super Myco Boi!" }</a></p>
+                    </div>
+
+                    <div class="col">
+                        <h3>{ "Sample ROMs" }</h3>
+                        <table class="table table-hover">
+                            <tbody>
+                                <tr>
+                                    <th><a class="btn btn-secondary" href="/roms/desertboy.gb" role="button">{ "desertboy.gb" }</a></th>
+                                    <th><a class="btn btn-link" href="https://ekimekim.itch.io/desert-bus-for-gameboy" role="button">{ "Source" }</a></th>
+                                </tr>
+                                <tr>
+                                    <th><a class="btn btn-secondary" href="/roms/flappyboy.gb" role="button">{ "flappyboy.gb" }</a></th>
+                                    <th><a class="btn btn-link" href="https://github.com/bitnenfer/flappy-boy-asm" role="button">{ "Source" }</a></th>
+                                </tr>
+                                <tr>
+                                    <th><a class="btn btn-secondary" href="/roms/ucity.gbc" role="button">{ "ucity.gbc" }</a></th>
+                                    <th><a class="btn btn-link" href="https://github.com/AntonioND/ucity" role="button">{ "Source" }</a></th>
+                                </tr>
+                                <tr>
+                                    <th><a class="btn btn-secondary" href="/roms/RenegadeRush.gb" role="button">{ "RenegadeRush.gb" }</a></th>
+                                    <th><a class="btn btn-link" href="https://quinnp.itch.io/renegade-rush" role="button">{ "Source" }</a></th>
                                 </tr>
                             </tbody>
                         </table>
