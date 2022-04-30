@@ -18,6 +18,8 @@ pub struct Emulator {
     canvas: NodeRef,
     joypad: JoypadState,
 
+    gamepad_events: Option<gilrs::Gilrs>,
+
     _interval: Interval,
 }
 
@@ -34,10 +36,19 @@ impl Component for Emulator {
             Interval::new(1000 / 60, move || link.send_message(EmulatorMessage::Tick))
         };
 
+        let gamepad_events = match gilrs::Gilrs::new() {
+            Ok(g) => Some(g),
+            Err(_e) => {
+                None
+            }
+        };
+
         Self {
             emu,
             canvas: NodeRef::default(),
             joypad: JoypadState::default(),
+
+            gamepad_events,
 
             _interval: interval,
         }
@@ -96,6 +107,33 @@ impl Emulator {
         use wasm_bindgen::{Clamped, JsCast};
         use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
 
+        if let Some(gilrs) = &mut self.gamepad_events {
+            if let Some(gilrs::Event {
+                id: _id,
+                event,
+                time: _time,
+            }) = gilrs.next_event()
+            {
+                match event {
+                    gilrs::EventType::ButtonPressed(b, _) => {
+                        if let Some(input) = gilrs_to_gband_input(&b) {
+                            self.joypad.set(input, true);
+
+                            self.emu.set_joypad(self.joypad);
+                        }
+                    }
+                    gilrs::EventType::ButtonReleased(b, _) => {
+                        if let Some(input) = gilrs_to_gband_input(&b) {
+                            self.joypad.set(input, false);
+
+                            self.emu.set_joypad(self.joypad);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         let frame = loop {
             if let Some(frame) = self.emu.clock() {
                 break frame;
@@ -131,6 +169,21 @@ fn h_key_event_to_joypad(e: KeyboardEvent) -> Option<JoypadState> {
         0x25 => Some(JoypadState::LEFT),
         0x27 => Some(JoypadState::RIGHT),
         0x26 => Some(JoypadState::UP),
+        _ => None,
+    }
+}
+
+// This maps an actual gamepad input to a controller input
+fn gilrs_to_gband_input(keycode: &gilrs::Button) -> Option<JoypadState> {
+    match keycode {
+        gilrs::Button::East => Some(JoypadState::A),
+        gilrs::Button::South => Some(JoypadState::B),
+        gilrs::Button::Start => Some(JoypadState::START),
+        gilrs::Button::Select => Some(JoypadState::SELECT),
+        gilrs::Button::DPadDown => Some(JoypadState::DOWN),
+        gilrs::Button::DPadLeft => Some(JoypadState::LEFT),
+        gilrs::Button::DPadRight => Some(JoypadState::RIGHT),
+        gilrs::Button::DPadUp => Some(JoypadState::UP),
         _ => None,
     }
 }
