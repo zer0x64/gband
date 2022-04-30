@@ -1,7 +1,6 @@
 use crate::emulator::Emulator;
 use gloo::file::callbacks::FileReader;
 use gloo::file::File;
-use web_sys::{Event, HtmlInputElement};
 use yew::prelude::*;
 
 const DESCRIPTION: &str =  "You can be one of the first to experience the thrill our the new experience we crafted for you.
@@ -10,6 +9,7 @@ const DESCRIPTION: &str =  "You can be one of the first to experience the thrill
 
 pub enum AppMessage {
     RomFile(File),
+    RomSample(String),
     RomBytes(Vec<u8>),
 }
 
@@ -30,10 +30,18 @@ impl Component for App {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let onchange = ctx.link().callback(|e: Event| {
+        use web_sys::{HtmlInputElement, HtmlSelectElement};
+
+        let file_onchange = ctx.link().callback(|e: Event| {
             let input: HtmlInputElement = e.target_unchecked_into();
             let file = File::from(input.files().unwrap().get(0).unwrap());
             AppMessage::RomFile(file)
+        });
+
+        let sample_onchange = ctx.link().callback(|e: Event| {
+            let input: HtmlSelectElement = e.target_unchecked_into();
+            let sample_name = input.value();
+            AppMessage::RomSample(sample_name)
         });
 
         html! {
@@ -52,6 +60,7 @@ impl Component for App {
                 <h1 id="introduction">{ "Introduction" }</h1>
 
                 <p>{ "GBAND, the new revolution in multplayer gaming. " }</p>
+
                 <h4>{ "A Mycoverse Exclusive™" }</h4>
 
                 <p>{ DESCRIPTION }</p>
@@ -59,7 +68,7 @@ impl Component for App {
                 <h4>{ "Play as Myco Boi with your friends!" }</h4>
 
                 <p>{ "When launching GBAND, you can connect to the game servers using this command:" }</p>
-                <code>{ "./gband -c \"http://gband.ctf:8080\" path/to/rom" } </code>
+                <code>{ "./gband -c \"http://gband.ctf:8080\" path/to/rom" }</code>
                 <p>{ "You can then adventure through the magical mushroom forest and talk to the elder mushroom mans to connect with other players." }</p>
                 <p>{ "Note that for now, the multiplayer servers are only able to handle Super Myco boi™ using the native version of GBAND. It won't work using the web version." }</p>
 
@@ -87,11 +96,20 @@ impl Component for App {
                             <tbody>
                                 <tr>
                                     <th>{ "Your own" }</th>
-                                    <th><input type="file" {onchange} /></th>
+                                    <th><input type="file" onchange={file_onchange} /></th>
                                 </tr>
                                 <tr>
                                     <th>{ "Sample" }</th>
-                                    <th>{ "TODO" }</th>
+                                    <th>
+                                        <select name="samples" id="samples" onchange={sample_onchange}>
+                                            <option value="none" selected=true>{ "Choose from list" }</option>
+                                            <option value="super-myco-boi.gbc">{ "super-myco-boi.gbc" }</option>
+                                            <option value="desertboy.gb">{ "desertboy.gb" }</option>
+                                            <option value="flappyboy.gb">{ "flappyboy.gb" }</option>
+                                            <option value="ucity.gbc">{ "ucity.gbc" }</option>
+                                            <option value="RenegadeRush.gb">{ "RenegadeRush.gb" }</option>
+                                        </select>
+                                    </th>
                                 </tr>
                             </tbody>
                         </table>
@@ -215,10 +233,32 @@ impl Component for App {
                 self.reader = Some(reader);
                 false
             }
+            AppMessage::RomSample(sample_name) => {
+                if sample_name == "none" {
+                    return false;
+                }
+
+                ctx.link().send_future(async move {
+                    let rom = fetch_rom(&sample_name).await;
+                    AppMessage::RomBytes(rom)
+                });
+
+                false
+            }
             AppMessage::RomBytes(rom) => {
                 self.rom = Some(rom);
                 true
             }
         }
     }
+}
+
+async fn fetch_rom(sample_name: &str) -> Vec<u8> {
+    use gloo::net::http::Request;
+
+    let url = format!("/roms/{}", sample_name);
+    let resp = Request::get(&url).send().await.unwrap();
+    let rom = resp.binary().await.unwrap();
+
+    rom
 }

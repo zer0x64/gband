@@ -23,5 +23,9 @@ features = [
   "ImageData",
   "Event",
   "HtmlInputElement",
-  "FileList"
+  "HtmlSelectElement",
+  "FileList",
+  "Request",
+  "RequestInit",
+  "Response",
 ]
