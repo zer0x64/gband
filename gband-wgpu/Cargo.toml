@@ -3,7 +3,6 @@ authors = ["zer0x64 <dugre.philippe@hotmail.com>"]
 edition = "2021"
 name = "gband-wgpu"
 version = "0.1.0"
-
 [dependencies]
 bitflags = "1.2.1"
 flexi_logger = "0.17.1"
@@ -13,6 +12,8 @@ log = "0.4"
 native-dialog = "0.5.5"
 spin_sleep = "1.1.1"
 structopt = "0.3.21"
+strum = "0.24"
+strum_macros = "0.24"
 wgpu = "0.12"
 winit = "0.26.1"
 
@@ -25,8 +26,8 @@ features = ["debugger"]
 path = "../gband"
 
 [dependencies.gilrs]
-version = "0.8"
 optional = true
+version = "0.8"
 
 [features]
 default = []

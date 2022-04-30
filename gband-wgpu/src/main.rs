@@ -3,6 +3,8 @@ use futures::executor::block_on;
 use gband::{Emulator, JoypadState};
 use wgpu::util::DeviceExt;
 
+use strum_macros::EnumString;
+
 use std::{
     fs::OpenOptions,
     io::{Read, Write},
@@ -46,10 +48,68 @@ struct Opt {
     #[structopt(short = "c", long, group = "serial")]
     client: Option<SocketAddr>,
 
+    /// Graphics API to use
+    /// Possible values: vulkan, opengl, directx11, directx12
+    /// Only Vulkan and DirectX12 are well supported.
+    /// Only use this if the default doesn't work well.
+    #[structopt(short = "g", long)]
+    graphics_api: Option<GraphicsApi>,
+
+    /// Power adapter to use.
+    /// Possible values: low, high.
+    /// Determines which GPU to use for rendering
+    /// Only use this if the default doesn't work well.
+    #[structopt(long)]
+    power_adapter: Option<PowerAdapter>,
+
     /// Disables gamepad support
     #[structopt(long = "no-gamepad")]
     #[cfg(feature = "gilrs")]
     disable_gamepad: bool,
+}
+
+#[derive(EnumString, Debug)]
+enum GraphicsApi {
+    #[strum(ascii_case_insensitive)]
+    Vulkan,
+
+    #[strum(ascii_case_insensitive)]
+    OpenGl,
+
+    #[strum(ascii_case_insensitive)]
+    DirectX11,
+
+    #[strum(ascii_case_insensitive)]
+    DirectX12,
+}
+
+#[derive(EnumString, Debug)]
+enum PowerAdapter {
+    #[strum(ascii_case_insensitive)]
+    Low,
+
+    #[strum(ascii_case_insensitive)]
+    High,
+}
+
+impl Into<wgpu::Backends> for GraphicsApi {
+    fn into(self) -> wgpu::Backends {
+        match self {
+            GraphicsApi::Vulkan => wgpu::Backends::VULKAN,
+            GraphicsApi::OpenGl => wgpu::Backends::GL,
+            GraphicsApi::DirectX11 => wgpu::Backends::DX11,
+            GraphicsApi::DirectX12 => wgpu::Backends::DX12,
+        }
+    }
+}
+
+impl Into<wgpu::PowerPreference> for PowerAdapter {
+    fn into(self) -> wgpu::PowerPreference {
+        match self {
+            PowerAdapter::Low => wgpu::PowerPreference::LowPower,
+            PowerAdapter::High => wgpu::PowerPreference::HighPerformance,
+        }
+    }
 }
 
 mod debugger;
@@ -71,6 +131,7 @@ fn winit_to_gband_input(keycode: &VirtualKeyCode) -> Result<JoypadState, ()> {
     }
 }
 
+#[cfg(feature = "gilrs")]
 enum JoypadStateChange {
     Pressed(JoypadState),
     Released(JoypadState),
@@ -191,17 +252,33 @@ impl State {
     async fn new(
         window: &winit::window::Window,
         emulator: Emulator,
+        graphics_api: Option<GraphicsApi>,
+        power_adapter: Option<PowerAdapter>,
+
         #[cfg(feature = "gilrs")] gamepad_events: Option<Gilrs>,
         paused: bool,
     ) -> Self {
         let size = window.inner_size();
 
         // Used prefered graphic API
-        let instance = wgpu::Instance::new(wgpu::Backends::all());
+        let backends = if let Some(api) = graphics_api {
+            api.into()
+        } else {
+            wgpu::Backends::all()
+        };
+        let instance = wgpu::Instance::new(backends);
+
         let surface = unsafe { instance.create_surface(window) };
+
+        let power_adapter = if let Some(adapter) = power_adapter {
+            adapter.into()
+        } else {
+            wgpu::PowerPreference::default()
+        };
+
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
+                power_preference: power_adapter,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
@@ -700,6 +777,8 @@ fn main() {
     let mut state = block_on(State::new(
         &window,
         emulator,
+        opt.graphics_api,
+        opt.power_adapter,
         #[cfg(feature = "gilrs")]
         gamepad_events,
         opt.start_paused,
