@@ -219,6 +219,13 @@ impl Component for App {
                 </table>
                 <a href="https://github.com/gfx-rs/wgpu"> {"For more compatibility information, please refer to the WGPU compatibily matrix."} </a>
             </main>
+
+            <footer class="container">
+                <p>{ "© 2022 Mycoverse" }</p>
+                <p>
+                    <a href="#">{ "Back to top" }</a>
+                </p>
+            </footer>
             </body>
         }
     }
