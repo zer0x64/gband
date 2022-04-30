@@ -38,9 +38,7 @@ impl Component for Emulator {
 
         let gamepad_events = match gilrs::Gilrs::new() {
             Ok(g) => Some(g),
-            Err(_e) => {
-                None
-            }
+            Err(_e) => None,
         };
 
         Self {

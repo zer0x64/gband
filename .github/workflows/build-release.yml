@@ -29,7 +29,8 @@ jobs:
         run: |
           sudo apt-get clean && sudo apt-get update
           sudo apt-get install libudev-dev
-      - name: Run cargo build
+      
+      - name: Run cargo build for client
         uses: actions-rs/cargo@v1
         with:
           command: build
@@ -40,6 +41,18 @@ jobs:
         with:
           name: gband-wgpu-linux
           path: target/release/gband-wgpu
+
+      - name: Run cargo build for server
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --features "true_flag"
+      
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v3
+        with:
+          name: gband-wgpu-linux
+          path: target/release/gband-server
 
   build_release_windows:
     name: Release Build Windows

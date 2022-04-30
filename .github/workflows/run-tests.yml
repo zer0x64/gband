@@ -22,11 +22,17 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get clean && sudo apt-get update
+          sudo apt-get install libudev-dev
 
       - name: Run cargo check
         uses: actions-rs/cargo@v1
         with:
           command: check
+          args: --features "gamepad"
 
   test:
     name: Test Suite
@@ -43,6 +49,11 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+      
+      - name: Install Dependencies
+        run: |
+          sudo apt-get clean && sudo apt-get update
+          sudo apt-get install libudev-dev
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -63,6 +74,11 @@ jobs:
           toolchain: stable
           override: true
           components: rustfmt, clippy
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get clean && sudo apt-get update
+          sudo apt-get install libudev-dev
 
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
