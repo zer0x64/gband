@@ -285,8 +285,8 @@ SerialHandler::
     ld [serialReceivedNewData], a
 
     ; Make "no data" the next byte to send
-    ld a, SERIAL_NO_DATA_BYTE
-    ld [serialSendData], a
+    ;ld a, SERIAL_NO_DATA_BYTE
+    ;ld [serialSendData], a
 
     pop hl
     pop de

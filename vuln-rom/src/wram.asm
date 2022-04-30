@@ -4,15 +4,15 @@ SECTION "WRAM", WRAM0
 localVariables::
     DS $20         ; Reserve space for local variables inside functions
 .end::
-playerNameLengthRam::
-    DB
-playerNameRam::
-    DS $8         ; Space where the name is stored
-.end::
 flagLengthRam::
     DB
 flagRam::
     DS $10         ; Space where the flag is stored. Note that this is after the local variables so te buffer overflows it and the CTF players nmeeds to fetch it from SRAM
+.end::
+playerNameLengthRam::
+    DB
+playerNameRam::
+    DS $8         ; Space where the name is stored
 .end::
 isCgb::
     DB

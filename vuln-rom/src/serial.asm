@@ -55,6 +55,11 @@ RunSerialMode::
     ld a, SERIAL_STATE_WAITING_TO_PRESS_A
     ld [serialState], a
 
+    xor a
+    ld [serialReceivedNewData], a
+    ld [serialReceiveData], a
+    ld [serialSendData], a
+
     ; We set the initial text to display
     call ClearTextboxText
 
@@ -134,7 +139,6 @@ RunSerialMode::
 
     jr .render
 :
-    ; Else, wait for connection with external clock
     ld a, SERIAL_CONNECTION_STATE_INTERNAL ; Tell the other to connect as internal
     ldh [rSB], a
     xor a
@@ -156,19 +160,17 @@ RunSerialMode::
     ldh [rSB], a
     ld a, SCF_START | SCF_SOURCE
     ldh [rSC], a
-    call WaitVblank
-
     ; Wait until the other player has connected
 :
-    ld a, [serialReceivedNewData]
-    and a
-    jr z, :-
-    ld a, [serialReceiveData]
+    call WaitForSerial
     and a
     jr nz, .render
 
 .transfering
     call ExchangeName
+
+    xor a
+    call SerialSendByte
 
     ; We update the text to display
     call ClearTextboxText
@@ -206,6 +208,18 @@ ExchangeName:
     push bc
     push de
     push hl
+
+    call SerialSendByte
+    call WaitForSerial
+:
+    ; Synchronise both GB
+    ld a, SERIAL_DATA_SYNC_FLAG
+
+    call SerialSendByte
+    call WaitForSerial
+    cp SERIAL_DATA_SYNC_FLAG
+    jr nz, :-
+
     call ExchangeNameLength
 
     ; Get max length, put it in b
@@ -217,25 +231,30 @@ ExchangeName:
     ld b, a
 
 .startExchanging
+    ; Resynchronize
+:
     ld hl, playerNameRam
     ld de, localVariables
-
 .loop
-    ; Exchange one byte
-    ld a, [hli]
-    ld [serialSendData], a
+    ld a, SERIAL_DATA_SYNC_FLAG
+
     call SerialSendByte
-    call WaitVblank
+    call WaitForSerial
+    cp SERIAL_DATA_SYNC_FLAG
+    jr nz, .loop
 
+    ; Exchange one byte
 :
-    ld a, [serialReceivedNewData]
-    and a
-    jr z, :-
-    ld a, [serialReceiveData]
-    ld c, a
+    ld a, [hl]
 
-    ; Wait
-    call WaitVblank
+    call SerialSendByte
+    call WaitForSerial
+    cp SERIAL_DATA_SYNC_FLAG
+    jr z, :-
+
+    inc hl
+    
+    ld c, a
 
     ; Store the byte into the local variables
     ld a, c
@@ -254,13 +273,11 @@ ExchangeName:
 ExchangeNameLength:
     ld a, [playerNameLengthRam]
     call SerialSendByte
-    call WaitVblank
 
-:
-    ld a, [serialReceivedNewData]
-    and a
-    jr z, :-
-    ld a, [serialReceiveData]
+    call WaitForSerial
+    cp SERIAL_DATA_SYNC_FLAG
+    jr z, ExchangeNameLength
+
     ld [otherPlayerNameLength], a
 
     ret
@@ -327,6 +344,18 @@ WaitVblank:
     pop de
     pop bc
     pop af
+    ret
+
+WaitForSerial:
+:
+    ld a, [serialReceivedNewData]
+    and a
+    jr z, :-
+    xor a
+    ld [serialReceivedNewData], a
+    
+    ld a, [serialReceiveData]
+
     ret
 
 textPressAToInitializeTransfer:
