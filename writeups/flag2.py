@@ -11,8 +11,8 @@ def main():
         s.send(bytes([k]))
         print(s.recv(1))
     
-    time.sleep(1)
-    print(s.recv())
+    for i in range(0, 32):
+        print(s.recv(16))
 
 if __name__ == "__main__":
     main()
