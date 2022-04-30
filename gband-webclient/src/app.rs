@@ -4,6 +4,10 @@ use gloo::file::File;
 use web_sys::{Event, HtmlInputElement};
 use yew::prelude::*;
 
+const DESCRIPTION: &str =  "You can be one of the first to experience the thrill our the new experience we crafted for you.
+                            You can play in your browser below, or use one of the download links to download it your PC.
+                            You can also try out the demo for the lauch title: Super Myco Boi™";
+
 pub enum AppMessage {
     RomFile(File),
     RomBytes(Vec<u8>),
@@ -33,7 +37,7 @@ impl Component for App {
         });
 
         html! {
-            <>
+            <body>
             <div class="container">
                 <header class="py-3">
                     <div class="row flex-nowrap justify-content-between align-items-center">
@@ -47,9 +51,17 @@ impl Component for App {
             <main class="container">
                 <h1 id="introduction">{ "Introduction" }</h1>
 
-                <p>{ "Welcome to the GBand homepage!" }</p>
+                <p>{ "GBAND, the new revolution in multplayer gaming. " }</p>
+                <h4>{ "A Mycoverse Exclusive™" }</h4>
 
-                <p>{ "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum." }</p>
+                <p>{ DESCRIPTION }</p>
+
+                <h4>{ "Play as Myco Boi with your friends!" }</h4>
+
+                <p>{ "When launching GBAND, you can connect to the game servers using this command:" }</p>
+                <code>{ "./gband -c \"http://gband.ctf:8080\" path/to/rom" } </code>
+                <p>{ "You can then adventure through the magical mushroom forest and talk to the elder mushroom mans to connect with other players." }</p>
+                <p>{ "Note that for now, the multiplayer servers are only able to handle Super Myco boi™ using the native version of GBAND. It won't work using the web version." }</p>
 
                 <h1 id="livedemo">{ "Live demo" }</h1>
 
@@ -139,14 +151,14 @@ impl Component for App {
                         <table class="table">
                             <tbody>
                                 <tr>
-                                    <th><a class="btn btn-primary" href="#" role="button">{ "Windows x64" }</a></th>
-                                    <th><a class="btn btn-primary" href="#" role="button">{ "Linux x64" }</a></th>
+                                    <th><a class="btn btn-primary" href="https://dl.nsec/gband-windows.zip" role="button">{ "Windows x64" }</a></th>
+                                    <th><a class="btn btn-primary" href="https://dl.nsec/gband-linux.zip" role="button">{ "Linux x64" }</a></th>
                                 </tr>
                             </tbody>
                         </table>
 
-                        <h3>{ "Try our new game!" }</h3>
-                        <p><a class="btn btn-danger" href="#" role="button">{ "Super Myco Boi!" }</a></p>
+                        <h3>{ "Try our new game's demo!" }</h3>
+                        <p><a class="btn btn-danger" href="https://dl.nsec/super-myco-boi.gbc" role="button">{ "Super Myco Boi!" }</a></p>
                     </div>
 
                     <div class="col">
@@ -173,8 +185,23 @@ impl Component for App {
                         </table>
                     </div>
                 </div>
+
+                <h1> { "System Requirements" } </h1>
+                <table class="table">
+                    <tbody>
+                        <tr>
+                            <th> {"Linux"} </th>
+                            <th> {"A modern system and support for Vulkan or OpenGL 3"} </th>
+                        </tr>
+                        <tr>
+                            <th> {"Windows"} </th>
+                            <th> {"A modern system and support for DirectX 11, DirectX 12 or Vulkan."} </th>
+                        </tr>
+                    </tbody>
+                </table>
+                <a href="https://github.com/gfx-rs/wgpu"> {"For more compatibility information, please refer to the WGPU compatibily matrix."} </a>
             </main>
-            </>
+            </body>
         }
     }
 

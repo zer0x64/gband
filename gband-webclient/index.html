@@ -13,9 +13,21 @@
             integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3"
             crossorigin="anonymous"
         />
-        <link data-trunk href="style.css" rel="inline" type="css" />
-        <link data-trunk href="roms" rel="copy-dir" type="css" />
+        <link data-trunk href="style.css" rel="css" />
+        <link data-trunk href="roms" rel="copy-dir" />
+        <link data-trunk href="favicon" rel="copy-dir" />
+
+        <link data-trunk href="favicon/favicon.ico" rel="copy-file" />
+        <link data-trunk href="favicon/site.webmanifest" rel="copy-file" />
     </head>
+
+    <script>
+    window.addEventListener("keydown", function(e) {
+        if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+            e.preventDefault();
+        }
+    }, false);
+    </script>
 
     <body></body>
 </html>
