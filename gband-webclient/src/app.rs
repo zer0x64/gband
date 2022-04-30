@@ -221,7 +221,7 @@ impl Component for App {
             </main>
 
             <footer class="container">
-                <p>{ "© 2022 Mycoverse" }</p>
+                <p>{ "© 2022 Ouyaya" }</p>
                 <p>
                     <a href="#">{ "Back to top" }</a>
                 </p>
