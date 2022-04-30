@@ -112,22 +112,16 @@ impl Emulator {
                 time: _time,
             }) = gilrs.next_event()
             {
-                match event {
-                    gilrs::EventType::ButtonPressed(b, _) => {
-                        if let Some(input) = gilrs_to_gband_input(&b) {
-                            self.joypad.set(input, true);
-
-                            self.emu.set_joypad(self.joypad);
-                        }
+                match gilrs_to_gband_input(event) {
+                    Some(JoypadStateChange::Pressed(input)) => {
+                        self.joypad.insert(input);
+                        self.emu.set_joypad(self.joypad);
                     }
-                    gilrs::EventType::ButtonReleased(b, _) => {
-                        if let Some(input) = gilrs_to_gband_input(&b) {
-                            self.joypad.set(input, false);
-
-                            self.emu.set_joypad(self.joypad);
-                        }
+                    Some(JoypadStateChange::Released(input)) => {
+                        self.joypad.remove(input);
+                        self.emu.set_joypad(self.joypad);
                     }
-                    _ => {}
+                    None => {}
                 }
             }
         }
@@ -171,8 +165,53 @@ fn h_key_event_to_joypad(e: KeyboardEvent) -> Option<JoypadState> {
     }
 }
 
-// This maps an actual gamepad input to a controller input
-fn gilrs_to_gband_input(keycode: &gilrs::Button) -> Option<JoypadState> {
+enum JoypadStateChange {
+    Pressed(JoypadState),
+    Released(JoypadState),
+}
+
+fn gilrs_to_gband_input(event: gilrs::EventType) -> Option<JoypadStateChange> {
+    match event {
+        gilrs::EventType::AxisChanged(axis, value, _) => match axis {
+            gilrs::Axis::LeftStickX | gilrs::Axis::DPadX => {
+                if value > 0.0 {
+                    if value > 0.4 {
+                        Some(JoypadStateChange::Pressed(JoypadState::RIGHT))
+                    } else {
+                        Some(JoypadStateChange::Released(JoypadState::RIGHT))
+                    }
+                } else if value < -0.4 {
+                    Some(JoypadStateChange::Pressed(JoypadState::LEFT))
+                } else {
+                    Some(JoypadStateChange::Released(JoypadState::LEFT))
+                }
+            }
+            gilrs::Axis::LeftStickY | gilrs::Axis::DPadY => {
+                if value > 0.0 {
+                    if value > 0.4 {
+                        Some(JoypadStateChange::Pressed(JoypadState::UP))
+                    } else {
+                        Some(JoypadStateChange::Released(JoypadState::UP))
+                    }
+                } else if value < -0.4 {
+                    Some(JoypadStateChange::Pressed(JoypadState::DOWN))
+                } else {
+                    Some(JoypadStateChange::Released(JoypadState::DOWN))
+                }
+            }
+            _ => None,
+        },
+        gilrs::EventType::ButtonPressed(b, _) => {
+            gilrs_button_to_gband_input(b).map(JoypadStateChange::Pressed)
+        }
+        gilrs::EventType::ButtonReleased(b, _) => {
+            gilrs_button_to_gband_input(b).map(JoypadStateChange::Released)
+        }
+        _ => None,
+    }
+}
+
+fn gilrs_button_to_gband_input(keycode: gilrs::Button) -> Option<JoypadState> {
     match keycode {
         gilrs::Button::East => Some(JoypadState::A),
         gilrs::Button::South => Some(JoypadState::B),
