@@ -285,7 +285,6 @@ impl Ppu {
         self.window_y_counter = 0;
         self.x = 0;
         self.y = 0;
-        self.y_compare = 0;
         self.fifo_mode = Default::default();
         self.background_pixel_pipeline = Default::default();
         self.sprite_pixel_pipeline = Default::default();
