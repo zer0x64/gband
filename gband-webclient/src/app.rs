@@ -70,7 +70,7 @@ impl Component for App {
                 <p>{ "When launching GBAND, you can connect to the game servers using this command:" }</p>
                 <code>{ "./gband -c \"http://gband.ctf:8080\" path/to/rom" }</code>
                 <p>{ "You can then adventure through the magical mushroom forest and talk to the elder mushroom mans to connect with other players." }</p>
-                <p>{ "Note that for now, the multiplayer servers are only able to handle Super Myco boi™ using the native version of GBAND. It won't work using the web version." }</p>
+                <p>{ "Note that for now, the multiplayer servers are only able to handle Super Myco Boi™ using the native version of GBAND. It won't work using the web version." }</p>
 
                 <h1 id="livedemo">{ "Live demo" }</h1>
 
