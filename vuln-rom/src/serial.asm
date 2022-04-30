@@ -7,6 +7,27 @@ SERIAL_STATE_TRANSFER_OVER = 3
 
 TEXTBOX_LINE_LENGTH = 14
 
+SerialSendByte: MACRO
+    ld [serialSendData], a
+    ld a, [serialConnectionState]
+    cp SERIAL_CONNECTION_STATE_INTERNAL
+    jr nz, :+
+    ld a, SCF_START | SCF_SOURCE
+    ldh [rSC], a
+:
+ENDM
+
+WaitForSerial: MACRO
+:
+    ld a, [serialReceivedNewData]
+    and a
+    jr z, :-
+    xor a
+    ld [serialReceivedNewData], a
+    
+    ld a, [serialReceiveData]
+ENDM
+
 SECTION FRAGMENT "Serial transfer", ROMX
 RunSerialMode::
     ; Disable the PPU
@@ -160,9 +181,9 @@ RunSerialMode::
     ldh [rSB], a
     ld a, SCF_START | SCF_SOURCE
     ldh [rSC], a
+
     ; Wait until the other player has connected
-:
-    call WaitForSerial
+    WaitForSerial
     and a
     jr nz, .render
 
@@ -170,7 +191,7 @@ RunSerialMode::
     call ExchangeName
 
     xor a
-    call SerialSendByte
+    SerialSendByte
 
     ; We update the text to display
     call ClearTextboxText
@@ -195,30 +216,22 @@ RunSerialMode::
 .done
     jr .render
 
-SerialSendByte:
-    ld [serialSendData], a
-    ld a, [serialConnectionState]
-    cp SERIAL_CONNECTION_STATE_INTERNAL
-    ret nz
-    ld a, SCF_START | SCF_SOURCE
-    ldh [rSC], a
-    ret
-
 ExchangeName:
     push bc
     push de
     push hl
 
-    call SerialSendByte
-    call WaitForSerial
-:
+    SerialSendByte
+    WaitForSerial
+
+.resync
     ; Synchronise both GB
     ld a, SERIAL_DATA_SYNC_FLAG
 
-    call SerialSendByte
-    call WaitForSerial
+    SerialSendByte
+    WaitForSerial
     cp SERIAL_DATA_SYNC_FLAG
-    jr nz, :-
+    jr nz, .resync
 
     call ExchangeNameLength
 
@@ -231,26 +244,24 @@ ExchangeName:
     ld b, a
 
 .startExchanging
-    ; Resynchronize
-:
     ld hl, playerNameRam
     ld de, localVariables
 .loop
     ld a, SERIAL_DATA_SYNC_FLAG
 
-    call SerialSendByte
-    call WaitForSerial
+    SerialSendByte
+    WaitForSerial
     cp SERIAL_DATA_SYNC_FLAG
     jr nz, .loop
 
     ; Exchange one byte
-:
+.resyncByte
     ld a, [hl]
 
-    call SerialSendByte
-    call WaitForSerial
+    SerialSendByte
+    WaitForSerial
     cp SERIAL_DATA_SYNC_FLAG
-    jr z, :-
+    jr z, .resyncByte
 
     inc hl
     
@@ -272,9 +283,9 @@ ExchangeName:
 
 ExchangeNameLength:
     ld a, [playerNameLengthRam]
-    call SerialSendByte
+    SerialSendByte
 
-    call WaitForSerial
+    WaitForSerial
     cp SERIAL_DATA_SYNC_FLAG
     jr z, ExchangeNameLength
 
@@ -344,18 +355,6 @@ WaitVblank:
     pop de
     pop bc
     pop af
-    ret
-
-WaitForSerial:
-:
-    ld a, [serialReceivedNewData]
-    and a
-    jr z, :-
-    xor a
-    ld [serialReceivedNewData], a
-    
-    ld a, [serialReceiveData]
-
     ret
 
 textPressAToInitializeTransfer:
