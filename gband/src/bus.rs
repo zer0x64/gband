@@ -238,7 +238,7 @@ impl CpuBus<'_> {
             0xFF0F => self.interrupts.status.bits(),
             0xFF26 => {
                 // NR52, mock for now to make Zelda games work
-                0xFF
+                0x00
             }
             0xFF46 => {
                 // OAM DMA
