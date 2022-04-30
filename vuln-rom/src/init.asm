@@ -566,24 +566,23 @@ oamDmaROM::
 sgbObfuscationKey:
 DB $7c, $6b, $87, $45, $23, $db, $65, $99, $11, $ae, $f3, $a7, $42, $b9, $48, $02
 
-; TODO: Put the actual palettes
 cgbBackgroundPalette::
 ; Defaults to a greyscale palette
 .bg0
 DW $FFFF, $0279, $0013, $0000
-.bg1
+.bg1 ; base overworld palette (red mushroom)
 DW $ABAB, $7fff, $001f, $0000
-.bg2
+.bg2 ; palette used in the serial screen
 DW $ABAB, $0279, $4C00, $0000
-.bg3
-DW $CCCC, $DDDD, $EEEE, $FFFF
-.bg4
-DW $0000, $1010, $2323, $3232
-.bg5
-DW $4545, $5454, $6767, $7676
-.bg6
-DW $8989, $9898, $ABAB, $BABA
-.bg7 
+.bg3 ; alternate overworld palette (blue mushroom)
+DW $ABAB, $7fff, $7c03, $4207
+.bg4 ; flag
+DW $0000, $7fff, $ABAB, $0000
+.bg5 ; orange mushroom
+DW $ABAB, $7fff, $0159, $0000
+.bg6 ; pink mushroom
+DW $ABAB, $7fff, $523F, $0000
+.bg7 ; unsused?
 DW $CDCD, $DCDC, $EFEF, $FEFE
 .end
 
