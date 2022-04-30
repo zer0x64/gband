@@ -38,15 +38,7 @@ impl Component for App {
                 <header class="py-3">
                     <div class="row flex-nowrap justify-content-between align-items-center">
                         <div class="col-4 text-center">
-                            <a class="header-logo text-dark" href="#">{ "Gband emulator" }</a>
-                        </div>
-                    </div>
-                </header>
-
-                <header class="py-3">
-                    <div class="row flex-nowrap justify-content-between align-items-center">
-                        <div class="col-4 text-center">
-                            <a class="logo text-dark" href="#livedemo">{ "Live demo" }</a>
+                            <h1 class="logo text-dark">{ "GBAND" }</h1>
                         </div>
                     </div>
                 </header>
@@ -76,7 +68,7 @@ impl Component for App {
                         <p>{ "ROM to load: "} <input type="file" {onchange} /></p>
 
                         <h3>{ "Controls" }</h3>
-
+                        <h4>{ "You can also use a controller!" }</h4>
                         <table class="table table-hover">
                             <thead>
                                 <tr>

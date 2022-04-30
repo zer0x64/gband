@@ -1,4 +1,4 @@
 .vscode/
 target/
-roms/
+/roms/
 Cargo.lock
