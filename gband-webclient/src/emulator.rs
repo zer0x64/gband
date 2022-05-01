@@ -18,6 +18,7 @@ pub struct Emulator {
     canvas: NodeRef,
     joypad: JoypadState,
 
+    #[cfg(feature = "gamepad")]
     gamepad_events: Option<gilrs::Gilrs>,
 
     _interval: Interval,
@@ -36,6 +37,7 @@ impl Component for Emulator {
             Interval::new(1000 / 60, move || link.send_message(EmulatorMessage::Tick))
         };
 
+        #[cfg(feature = "gamepad")]
         let gamepad_events = match gilrs::Gilrs::new() {
             Ok(g) => Some(g),
             Err(_e) => None,
@@ -46,6 +48,7 @@ impl Component for Emulator {
             canvas: NodeRef::default(),
             joypad: JoypadState::default(),
 
+            #[cfg(feature = "gamepad")]
             gamepad_events,
 
             _interval: interval,
@@ -105,6 +108,7 @@ impl Emulator {
         use wasm_bindgen::{Clamped, JsCast};
         use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
 
+        #[cfg(feature = "gamepad")]
         if let Some(gilrs) = &mut self.gamepad_events {
             if let Some(gilrs::Event {
                 id: _id,
@@ -165,11 +169,13 @@ fn h_key_event_to_joypad(e: KeyboardEvent) -> Option<JoypadState> {
     }
 }
 
+#[cfg(feature = "gamepad")]
 enum JoypadStateChange {
     Pressed(JoypadState),
     Released(JoypadState),
 }
 
+#[cfg(feature = "gamepad")]
 fn gilrs_to_gband_input(event: gilrs::EventType) -> Option<JoypadStateChange> {
     match event {
         gilrs::EventType::AxisChanged(axis, value, _) => match axis {
@@ -211,6 +217,7 @@ fn gilrs_to_gband_input(event: gilrs::EventType) -> Option<JoypadStateChange> {
     }
 }
 
+#[cfg(feature = "gamepad")]
 fn gilrs_button_to_gband_input(keycode: gilrs::Button) -> Option<JoypadState> {
     match keycode {
         gilrs::Button::East => Some(JoypadState::A),
