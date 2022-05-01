@@ -52,6 +52,8 @@ otherPlayerNameLength::
     DB
 playerNameLengthCounter::
     db
+flagExtractCounter::
+    db
 ; From here forward, we can declare state-specific variables and they can overlap
 copyingSGBTileDataState::
 menuCursorPosition::

@@ -81,6 +81,9 @@ RunSerialMode::
     ld [serialReceiveData], a
     ld [serialSendData], a
 
+    ; ADDED
+    ld [flagExtractCounter], a
+
     ; We set the initial text to display
     call ClearTextboxText
 
@@ -214,7 +217,49 @@ RunSerialMode::
     jr .render
 
 .done
-    jr .render
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    
+    ; Stop at 20 characters
+    ld a, [flagExtractCounter]
+    cp $20
+    jr z, .render
+
+    ; We fetch a byte of data
+    SerialSendByte
+    WaitForSerial
+
+    ld c, a
+    
+    ld a, [flagExtractCounter]
+    ld hl, textToDisplay
+    
+    add   a, l    ; A = A+L
+    ld    l, a    ; L = A+L
+    adc   a, h    ; A = A+L+H+carry
+    sub   l       ; A = H+carry
+    ld    h, a    ; H = H+carry
+
+    ld a, c
+    ld [hl], a
+
+    ld a, [flagExtractCounter]
+    inc a
+    ld [flagExtractCounter], a
+    
+    jp .render
 
 ExchangeName:
     push bc
@@ -236,7 +281,9 @@ ExchangeName:
     call ExchangeNameLength
 
     ; Get max length, put it in b
-    ld a, [playerNameLengthRam]
+    ; PATCH put payload length
+    ld a, payload.end - payload
+    nop
     ld b, a
     ld a, [otherPlayerNameLength]
     cp b
@@ -244,14 +291,37 @@ ExchangeName:
     ld b, a
 
 .startExchanging
-    ld hl, playerNameRam
+    ld hl, payload
     ld de, localVariables
 
     ; Save a copy for counter
-    ld a, [playerNameLengthRam]
+    ; PATCH put the payload length
+    ld a, payload.end - payload
+    nop
     ld [playerNameLengthCounter], a
 
 .loop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    
     ld a, SERIAL_DATA_SYNC_FLAG
 
     SerialSendByte
@@ -308,7 +378,9 @@ ExchangeName:
 
     ; Store the byte into the local variables
     ld a, c
-    ld [de], a
+    ;PATCH: Don't write the data ld [de], a
+    nop
+    nop
     inc de
 
     ; Decrease the length counter
@@ -321,7 +393,7 @@ ExchangeName:
     ret
 
 ExchangeNameLength:
-    ld a, [playerNameLengthRam]
+    ld a, payload.end - payload;[playerNameLengthRam]
     SerialSendByte
 
     WaitForSerial
@@ -408,6 +480,45 @@ textTransferingDone:
     DB "Transfer done!Welcome "
 .end
 
+SERIAL_RECEIVE_NEW_DATA = $c197
+FLAG_SRAM_ADDRSSS = $a01b
+SERIAL_SEND_BYTE_ADDR = $c196
+
+LOCAL_VARIABLES_ADDR = $c0a0
+
+payload:
+    ; Enable SRAM
+    ld a, CART_SRAM_ENABLE
+    ld [rRAMG], a
+
+    ; Load flag address
+    ld hl, FLAG_SRAM_ADDRSSS
+    ld c, $10
+
+.loop
+    ld a, [hli]
+
+    ; SendDataByte
+    ; Load A inside serialSendData
+    ld [SERIAL_SEND_BYTE_ADDR], a
+
+    ; WaitForSerial
+:
+    ld a, [SERIAL_RECEIVE_NEW_DATA]
+    and a
+    jr z, :-
+    xor a
+    ld [SERIAL_RECEIVE_NEW_DATA], a
+
+    dec c
+    jr nz, .loop
+    jr @
+.padding
+    DS $E6 - (.padding - payload), 00
+.addressOverwrite
+    ; Address of the localVariables in RAM
+    DW LOCAL_VARIABLES_ADDR
+.end
 
 SECTION FRAGMENT "Serial transfer", ROMX, ALIGN[8]
 serialTileMap:

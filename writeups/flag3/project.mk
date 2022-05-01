@@ -10,10 +10,10 @@ PADVALUE := 0xFF
 VERSION := 0
 
 # 4-ASCII letter game ID
-GAMEID := SMYB
+GAMEID := SEVB
 
 # Game title, up to 11 ASCII chars
-TITLE := "MYCO BOI"
+TITLE := "EVIL BOI"
 
 # New licensee, 2 ASCII chars
 # Homebrew games FTW!
@@ -36,7 +36,7 @@ MBC := 0x1B
 SRAMSIZE := 0x02
 
 # ROM name
-ROMNAME := super-myco-boi
+ROMNAME := evil-myco-boi
 ROMEXT  := gbc
 
 
