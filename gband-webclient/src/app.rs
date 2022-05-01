@@ -115,7 +115,7 @@ impl Component for App {
                         </table>
 
                         <h3>{ "Controls" }</h3>
-                        <h4>{ "You can also use a controller!" }</h4>
+                        <h4>{ "You can also use a controller! (native version only)" }</h4>
                         <table class="table table-hover">
                             <thead>
                                 <tr>
