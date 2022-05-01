@@ -8,7 +8,7 @@ use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 #[structopt(no_version)]
-/// Nestadia debugger commands, inspired by GDB
+/// GBAND debugger commands, inspired by GDB
 pub enum DebuggerOpt {
     #[structopt(visible_alias = "c", no_version)]
     /// Resume execution of the emulator
