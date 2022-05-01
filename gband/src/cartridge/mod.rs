@@ -145,4 +145,28 @@ impl Cartridge {
     pub fn is_cgb(&self) -> bool {
         !matches!(self.header.cgb_flag, CgbFlag::NoCgb)
     }
+
+    #[cfg(feature = "debugger")]
+    pub fn get_rom_bank(&self) -> u8 {
+        if let CartridgeReadTarget::Rom(addr) = self.mapper.map_read(0x4000) {
+            (addr / 0x4000) as u8
+        } else {
+            0
+        }
+    }
+
+    #[cfg(feature = "debugger")]
+    pub fn get_ram_bank(&self) -> u8 {
+        match self.mapper.map_read(0xA000) {
+            CartridgeReadTarget::Ram(addr) => match &self.ram {
+                Some(ram) => (addr / ram.len()) as u8,
+                None => 0,
+            },
+            CartridgeReadTarget::RamHalf(addr) => match &self.ram {
+                Some(ram) => (addr / ram.len()) as u8,
+                None => 0,
+            },
+            _ => 0,
+        }
+    }
 }

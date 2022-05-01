@@ -450,6 +450,16 @@ impl CpuBus<'_> {
             _ => false,
         }
     }
+
+    #[cfg(feature = "debugger")]
+    pub fn get_cartridge_rom_bank(&self) -> u8 {
+        self.cartridge.get_rom_bank()
+    }
+
+    #[cfg(feature = "debugger")]
+    pub fn get_cartridge_ram_bank(&self) -> u8 {
+        self.cartridge.get_ram_bank()
+    }
 }
 
 #[macro_export]

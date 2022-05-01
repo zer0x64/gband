@@ -1,5 +1,8 @@
 mod decoder;
 
+#[cfg(feature = "debugger")]
+pub mod debugger;
+
 use bitflags::bitflags;
 
 use crate::{bus::CpuBus, CgbDoubleSpeed, InterruptReg, OamDma};

@@ -85,7 +85,7 @@ impl EmulatorState {
                     if let Some(step_frame) = self.emulator.clock() {
                         self.update_frame(step_frame.as_slice());
                     }
-                    self.emulator.cpu().cycles > 0 || self.emulator.cpu().pc == current_pc
+                    self.emulator.cpu().cycles > 1 || self.emulator.cpu().pc == current_pc
                 } {}
 
                 self.disassemble(None);
@@ -100,12 +100,12 @@ impl EmulatorState {
                     .1;
 
                 self.breakpoints.push(closest_addr);
-                println!("Added breakpoint at {:#06x}", closest_addr);
+                println!("Added breakpoint at {:04x}", closest_addr);
             }
             DebuggerOpt::Delete { index } => {
                 if let Some(index) = index {
                     let removed = self.breakpoints.remove(index);
-                    println!("Removed breakpoint {}: {:#06x}", index, removed);
+                    println!("Removed breakpoint {}: {:04x}", index, removed);
                 } else {
                     self.breakpoints.clear();
                     println!("Cleared all breakpoints");
@@ -141,13 +141,13 @@ impl EmulatorState {
                         .collect::<Vec<_>>()
                         .join("");
 
-                    println!("{:#06x}: {:47} {}", addr, bytes, ascii);
+                    println!("{:04x}: {:47} {}", addr, bytes, ascii);
                 }
             }
             DebuggerOpt::Info(info) => match info {
                 DebuggerInfoOpt::Break => {
                     for (index, addr) in self.breakpoints.iter().enumerate() {
-                        println!("Breakpoint {}: {:#06x}", index, addr);
+                        println!("Breakpoint {}: {:04x}", index, addr);
                     }
                 }
                 DebuggerInfoOpt::Reg { register } => self.print_registers(register),
@@ -155,9 +155,9 @@ impl EmulatorState {
         }
     }
 
-    fn disassemble(&self, search_addr: Option<u16>) {
-        let cpu = self.emulator.cpu();
+    fn disassemble(&mut self, search_addr: Option<u16>) {
         let disassembly = self.emulator.disassemble(0, 0);
+        let cpu = self.emulator.cpu();
 
         let center_addr = if let Some(search_addr) = search_addr {
             search_addr
@@ -165,51 +165,52 @@ impl EmulatorState {
             cpu.pc
         };
 
-        for (prg_bank, addr, disas) in &disassembly {
+        for (bank, addr, disas) in &disassembly {
             if (*addr as usize) > (center_addr as usize) - 20
                 && (*addr as usize) < (center_addr as usize) + 20
             {
-                let prefix = if (*addr as usize) == (cpu.pc as usize) {
+                let prefix = if *addr == cpu.pc || *addr == (cpu.pc - 1) {
                     ">"
                 } else {
                     " "
                 };
 
-                let bank = if let Some(prg_bank) = prg_bank {
-                    format!("{:#04x}:", prg_bank)
-                } else {
-                    String::from("    :")
-                };
-
-                println!("{} {}{:#06x}: {}", prefix, bank, addr, disas);
+                println!("{} {:02x}:{:04x}: {}", prefix, bank, addr, disas);
             }
         }
     }
 
-    fn print_registers(&self, _register: Option<String>) {
-        let _cpu = self.emulator.cpu();
+    fn print_registers(&self, register: Option<String>) {
+        let cpu = self.emulator.cpu();
 
-        // TODO: Print GB registers
-        /*if let Some(register) = register {
+        if let Some(register) = register {
             match register.as_str() {
-                "a" => println!("a: {:#06x}", cpu.a),
-                "x" => println!("x: {:#06x}", cpu.x),
-                "y" => println!("y: {:#06x}", cpu.y),
-                "st" => println!("st: {:#06x}", cpu.st),
-                "pc" => println!("pc: {:#06x}", cpu.pc),
-                "status" => println!("status: {:#06x}", cpu.status_register),
+                "a" => println!("a: {:02x}", cpu.a),
+                "f" => println!("f: {:02x}", cpu.f),
+                "b" => println!("b: {:02x}", cpu.b),
+                "c" => println!("c: {:02x}", cpu.c),
+                "d" => println!("d: {:02x}", cpu.d),
+                "e" => println!("e: {:02x}", cpu.e),
+                "h" => println!("h: {:02x}", cpu.h),
+                "l" => println!("l: {:02x}", cpu.l),
+                "af" => println!("af: {:02x}{:02x}", cpu.a, cpu.f),
+                "bc" => println!("bc: {:02x}{:02x}", cpu.b, cpu.c),
+                "de" => println!("de: {:02x}{:02x}", cpu.d, cpu.e),
+                "hl" => println!("hl: {:02x}{:02x}", cpu.h, cpu.l),
+                "sp" => println!("sp: {:04x}", cpu.sp),
+                "pc" => println!("pc: {:04x}", cpu.pc),
                 reg => println!("Unknown register: {}", reg),
             }
         } else {
             println!(
-                " a: {:#06x}      x: {:#06x}      y: {:#06x}",
-                cpu.a, cpu.x, cpu.y
+                "af: {:02x}{:02x}  bc: {:02x}{:02x}  de: {:02x}{:02x}",
+                cpu.a, cpu.f, cpu.b, cpu.c, cpu.d, cpu.e
             );
             println!(
-                "st: {:#06x}     pc: {:#06x} status: {:#06x}",
-                cpu.st, cpu.pc, cpu.status_register
+                "hl: {:02x}{:02x}  sp: {:04x}  pc: {:04x}",
+                cpu.h, cpu.l, cpu.sp, cpu.pc
             );
-        }*/
+        }
     }
 }
 

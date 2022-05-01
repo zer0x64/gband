@@ -28,7 +28,7 @@ pub struct EmulatorState {
 
 impl EmulatorState {
     pub fn run(&mut self) {
-        loop {
+        'main_loop: loop {
             if self.paused.load(std::sync::atomic::Ordering::Relaxed) {
                 // Block on input if paused
                 if let Ok(input) = self.input_receiver.recv() {
@@ -51,6 +51,12 @@ impl EmulatorState {
 
                 // Get a frame from the emulation and write it to the texture
                 let frame = loop {
+                    if self.breakpoints.contains(&self.emulator.cpu().pc) {
+                        println!("Reached breakpoint at {:04x}", self.emulator.cpu().pc);
+                        self.paused
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        continue 'main_loop;
+                    }
                     if let Some(f) = self.emulator.clock() {
                         break f;
                     }
