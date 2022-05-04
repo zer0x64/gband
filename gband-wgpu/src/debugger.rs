@@ -81,12 +81,20 @@ impl EmulatorState {
                 .store(false, std::sync::atomic::Ordering::Relaxed),
             DebuggerOpt::Step => {
                 let current_pc = self.emulator.cpu().pc;
+                let mut infinite_loop_counter = 0u8;
                 while {
                     if let Some(step_frame) = self.emulator.clock() {
                         self.update_frame(step_frame.as_slice());
                     }
                     self.emulator.cpu().cycles > 1 || self.emulator.cpu().pc == current_pc
-                } {}
+                } {
+                    // Safeguard against infinite loop never exiting step. Max t-states is 24
+                    infinite_loop_counter += 1;
+                    if infinite_loop_counter == 50 {
+                        println!("Infinite loop detected");
+                        break;
+                    }
+                }
 
                 self.disassemble(None);
                 self.print_registers(None);
@@ -159,21 +167,29 @@ impl EmulatorState {
         let disassembly = self.emulator.disassemble(0, 0);
         let cpu = self.emulator.cpu();
 
-        let center_addr = if let Some(search_addr) = search_addr {
-            search_addr
+        let search_addr = if let Some(search_addr) = search_addr {
+            search_addr as i32
         } else {
-            cpu.pc
+            cpu.pc as i32
         };
 
+        let closest_search_addr = disassembly
+            .iter()
+            .min_by_key(|&(_, x, _)| ((*x as i32) - search_addr).abs())
+            .unwrap()
+            .1;
+
+        let closest_pc = disassembly
+            .iter()
+            .min_by_key(|&(_, x, _)| ((*x as i32) - (cpu.pc as i32)).abs())
+            .unwrap()
+            .1;
+
         for (bank, addr, disas) in &disassembly {
-            if (*addr as usize) > (center_addr as usize) - 20
-                && (*addr as usize) < (center_addr as usize) + 20
+            if *addr >= closest_search_addr.saturating_sub(10)
+                && *addr <= closest_search_addr.saturating_add(10)
             {
-                let prefix = if *addr == cpu.pc || *addr == (cpu.pc - 1) {
-                    ">"
-                } else {
-                    " "
-                };
+                let prefix = if *addr == closest_pc { ">" } else { " " };
 
                 println!("{} {:02x}:{:04x}: {}", prefix, bank, addr, disas);
             }

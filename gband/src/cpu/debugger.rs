@@ -51,8 +51,8 @@ pub fn disassemble(bus: &mut CpuBus) -> Vec<(u8, u16, String)> {
 }
 
 fn read_immediate(bus: &mut CpuBus, pc: &mut u16) -> u8 {
-    let immediate = bus.read(*pc);
-    *pc = pc.wrapping_add(1);
+    let immediate = bus.read_without_dma_check(*pc, false);
+    *pc = pc.saturating_add(1);
     immediate
 }
 
