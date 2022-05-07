@@ -30,7 +30,19 @@ jobs:
           sudo apt-get clean && sudo apt-get update
           sudo apt-get install libudev-dev
       
-      - name: Run cargo build for client
+      - name: Run cargo build for debug client
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --features "gamepad"
+      
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v3
+        with:
+          name: gband-wgpu-linux-debug
+          path: target/debug/gband-wgpu
+
+      - name: Run cargo build for release client
         uses: actions-rs/cargo@v1
         with:
           command: build
@@ -70,6 +82,18 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --features "gamepad" --target x86_64-pc-windows-msvc
+      
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v3
+        with:
+          name: gband-wgpu-windows-debug
+          path: target/x86_64-pc-windows-msvc/debug/gband-wgpu.exe
+  
       - name: Run cargo build
         uses: actions-rs/cargo@v1
         with:
