@@ -1,3 +1,3 @@
-# nsec2021-gband
+# GBAND
 
 WIP GB/GBC emulator
