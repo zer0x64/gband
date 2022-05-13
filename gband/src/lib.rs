@@ -151,7 +151,7 @@ impl Emulator {
         let mut data = alloc::vec::Vec::new();
 
         for addr in start..=end {
-            let mut bus = borrow_cpu_bus!(self);
+            let bus = borrow_cpu_bus!(self);
             data.push(bus.read(addr));
         }
 

@@ -384,7 +384,7 @@ impl Ppu {
             }
             0xFF4F => {
                 let bank_bit = if self.vram_bank_register { 1 } else { 0 };
-                0xFF & !bank_bit
+                0xFE | bank_bit
             }
             0xFF68 => self.cgb_bg_palette.read_spec(),
             0xFF69 => self.cgb_bg_palette.read_data(self.fifo_mode),
