@@ -393,7 +393,7 @@ impl CpuBus<'_> {
 
     pub fn request_oam_dma(&mut self, source: u8) {
         // Mirror 0xE0-0xFF to 0xC0-0xDF by removing a specific bit
-        let mask = if source & 0xc0 == 0xc0 { !0x20 } else { 0 };
+        let mask = if source >= 0xE0 { !0x20 } else { 0xFF };
 
         *self.oam_dma = OamDma::new(source & mask);
     }
